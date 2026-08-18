@@ -45,3 +45,19 @@ export const CATEGORY_BORDER_CLASS: Record<Category, string> = {
   Travel: "border-orange-500",
   Custom: "border-slate-500",
 };
+
+// Same category → hue mapping as CATEGORY_DOT_CLASS, as literal hex instead
+// of a Tailwind class — for contexts (SVG stroke/fill, canvas) that can't
+// consume a `bg-*` utility class. Tailwind's default v4 500-shade values.
+export const CATEGORY_HEX: Record<Category, string> = {
+  School: "#3b82f6",
+  Work: "#f59e0b",
+  Gym: "#10b981",
+  Personal: "#8b5cf6",
+  Finance: "#f43f5e",
+  Projects: "#06b6d4",
+  Relationships: "#ec4899",
+  Health: "#14b8a6",
+  Travel: "#f97316",
+  Custom: "#64748b",
+};

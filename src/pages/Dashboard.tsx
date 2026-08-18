@@ -1,9 +1,9 @@
 import { QueryBoundary } from "@/components/QueryBoundary";
 import { Card } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { DayRingCard } from "@/components/dashboard/DayRingCard";
 import { ExternalAppsSection } from "@/components/externalApps/ExternalAppsSection";
 import { FocusTimerCard } from "@/components/dashboard/FocusTimerCard";
-import { MiniCalendarCard } from "@/components/dashboard/MiniCalendarCard";
 import { MyTasksCard } from "@/components/dashboard/MyTasksCard";
 import { QuickNotesCard } from "@/components/dashboard/QuickNotesCard";
 import { SyncConflicts } from "@/components/dashboard/SyncConflicts";
@@ -30,7 +30,7 @@ export default function Dashboard() {
       >
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <MiniCalendarCard items={allItems} />
+            <DayRingCard items={allItems} />
             <Card>
               <TodaysScheduleCard items={allItems} />
               <WeatherCard />

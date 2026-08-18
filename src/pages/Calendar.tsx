@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -13,6 +13,7 @@ import {
   useUpcomingCalendarEvents,
 } from "@/hooks/useGoogle";
 import { useItems } from "@/hooks/useItems";
+import { useNowTick } from "@/hooks/useNowTick";
 import { usePreferences } from "@/hooks/usePreferences";
 import {
   addDays,
@@ -275,17 +276,6 @@ function HourEventBlock({ positioned }: { positioned: PositionedEntry }) {
 }
 
 const HOURS = Array.from({ length: HOUR_GRID_END - HOUR_GRID_START }, (_, i) => HOUR_GRID_START + i);
-
-// Ticks once a minute so the "now" line in the week view keeps drifting down
-// through the day while the app sits open, instead of freezing at mount time.
-function useNowTick(intervalMs = 60_000): Date {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
-}
 
 function WeekHourGrid({ anchor, entriesByDay }: { anchor: Date; entriesByDay: Map<string, DayEntry[]> }) {
   const days = useMemo(() => getWeekDays(anchor), [anchor]);

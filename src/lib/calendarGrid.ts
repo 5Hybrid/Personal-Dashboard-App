@@ -97,6 +97,16 @@ export function minutesFromTimeString(time: string): number {
   return h * 60 + m;
 }
 
+// Inverse of minutesFromTimeString — wraps first, so a Day Ring block that
+// was dragged past midnight (raw minutes >= 1440 or negative) still lands on
+// a valid "HH:MM" for that block's actual clock time.
+export function minutesToTimeString(minutes: number): string {
+  const wrapped = ((minutes % 1440) + 1440) % 1440;
+  const h = Math.floor(wrapped / 60);
+  const m = Math.round(wrapped % 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 export function formatHourLabel(hour: number): string {
   const h = ((hour + 11) % 12) + 1; // 0->12, 13->1, etc.
   return `${h} ${hour < 12 ? "AM" : "PM"}`;

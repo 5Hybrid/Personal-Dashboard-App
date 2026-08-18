@@ -268,3 +268,17 @@
   letter-spacing: 0.04em;
   text-shadow: 0 0 24px oklch(0.75 0.19 195 / 45%);
 }
+
+/* Day Ring's "wall hit" feedback when a drag reaches a neighboring block —
+   a scale pulse on the handle being dragged (start/end resize), or a
+   brightness flash on the arc itself (whole-block move, where a scale pulse
+   would visibly wobble since the transform origin is the arc's own bounding
+   box, not the ring's center). */
+@keyframes day-ring-pulse-scale {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.35); }
+}
+@keyframes day-ring-pulse-flash {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.4); }
+}
