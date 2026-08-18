@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CATEGORY_DOT_CLASS } from "@/lib/categoryColors";
 import { formatShortDue, upcomingDeadlines } from "@/lib/dashboardData";
@@ -19,9 +20,9 @@ export function UpcomingDeadlinesCard({ items }: { items: Item[] }) {
       <CardHeader>
         <CardTitle>Upcoming Deadlines</CardTitle>
         <CardAction>
-          <Link to="/master-list" className="text-xs text-muted-foreground underline">
-            View All
-          </Link>
+          <Button asChild size="sm" variant="outline">
+            <Link to="/master-list">View All</Link>
+          </Button>
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-2">

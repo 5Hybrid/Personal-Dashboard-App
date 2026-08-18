@@ -1,4 +1,5 @@
 import { QueryBoundary } from "@/components/QueryBoundary";
+import { Card } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { ExternalAppsSection } from "@/components/externalApps/ExternalAppsSection";
 import { FocusTimerCard } from "@/components/dashboard/FocusTimerCard";
@@ -28,10 +29,12 @@ export default function Dashboard() {
         onRetry={() => itemsQuery.refetch()}
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <MiniCalendarCard items={allItems} />
-            <TodaysScheduleCard items={allItems} />
-            <WeatherCard />
+            <Card>
+              <TodaysScheduleCard items={allItems} />
+              <WeatherCard />
+            </Card>
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

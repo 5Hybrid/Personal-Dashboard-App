@@ -1,14 +1,17 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CATEGORY_BORDER_CLASS } from "@/lib/categoryColors";
 import { todayTimeline } from "@/lib/dashboardData";
 import { cn } from "@/lib/utils";
 import type { Item } from "@/types";
 
+// Rendered without its own Card wrapper — Dashboard stacks this together with
+// WeatherCard inside one shared Card so the two sections read as a single
+// connected box instead of two separate bordered cards.
 export function TodaysScheduleCard({ items }: { items: Item[] }) {
   const schedule = todayTimeline(items);
 
   return (
-    <Card>
+    <>
       <CardHeader>
         <CardTitle>Today's Schedule</CardTitle>
       </CardHeader>
@@ -44,6 +47,6 @@ export function TodaysScheduleCard({ items }: { items: Item[] }) {
           ))
         )}
       </CardContent>
-    </Card>
+    </>
   );
 }

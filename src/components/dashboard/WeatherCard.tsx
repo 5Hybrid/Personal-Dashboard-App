@@ -1,14 +1,15 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { QueryBoundary } from "@/components/QueryBoundary";
 import { useWeather } from "@/hooks/useWeather";
 import { weatherCodeInfo } from "@/lib/weather";
 
+// Rendered without its own Card wrapper — see TodaysScheduleCard for why.
 export function WeatherCard() {
   const weatherQuery = useWeather();
 
   return (
-    <Card>
-      <CardHeader>
+    <>
+      <CardHeader className="rounded-t-none border-t border-border pt-(--card-spacing)">
         <CardTitle>Weather</CardTitle>
       </CardHeader>
       <CardContent>
@@ -55,6 +56,6 @@ export function WeatherCard() {
           )}
         </QueryBoundary>
       </CardContent>
-    </Card>
+    </>
   );
 }

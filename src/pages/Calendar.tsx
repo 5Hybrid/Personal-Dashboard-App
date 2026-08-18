@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -276,10 +276,24 @@ function HourEventBlock({ positioned }: { positioned: PositionedEntry }) {
 
 const HOURS = Array.from({ length: HOUR_GRID_END - HOUR_GRID_START }, (_, i) => HOUR_GRID_START + i);
 
+// Ticks once a minute so the "now" line in the week view keeps drifting down
+// through the day while the app sits open, instead of freezing at mount time.
+function useNowTick(intervalMs = 60_000): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
 function WeekHourGrid({ anchor, entriesByDay }: { anchor: Date; entriesByDay: Map<string, DayEntry[]> }) {
   const days = useMemo(() => getWeekDays(anchor), [anchor]);
-  const today = new Date();
+  const today = useNowTick();
   const gridHeight = HOURS.length * HOUR_ROW_HEIGHT;
+  const nowMinutes = today.getHours() * 60 + today.getMinutes();
+  const nowTop = ((nowMinutes - HOUR_GRID_START * 60) / 60) * HOUR_ROW_HEIGHT;
+  const nowInGrid = nowMinutes >= HOUR_GRID_START * 60 && nowMinutes <= HOUR_GRID_END * 60;
 
   const dayData = useMemo(
     () =>
@@ -335,7 +349,7 @@ function WeekHourGrid({ anchor, entriesByDay }: { anchor: Date; entriesByDay: Ma
             </div>
           ))}
         </div>
-        {dayData.map(({ key, timed }) => (
+        {dayData.map(({ day, key, timed }) => (
           <div key={key} className="relative border-l" style={{ height: gridHeight }}>
             {HOURS.map((hour, i) => (
               <div key={hour} className="absolute inset-x-0 border-b" style={{ top: i * HOUR_ROW_HEIGHT }} />
@@ -343,6 +357,15 @@ function WeekHourGrid({ anchor, entriesByDay }: { anchor: Date; entriesByDay: Ma
             {timed.map((positioned) => (
               <HourEventBlock key={positioned.entry.key} positioned={positioned} />
             ))}
+            {nowInGrid && isSameDay(day, today) && (
+              <div
+                className="pointer-events-none absolute inset-x-0 z-10 flex items-center"
+                style={{ top: nowTop }}
+              >
+                <span className="-ml-[3px] size-[7px] shrink-0 rounded-full bg-destructive" />
+                <div className="h-px flex-1 bg-destructive" />
+              </div>
+            )}
           </div>
         ))}
       </div>

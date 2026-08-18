@@ -36,9 +36,9 @@ export function MiniCalendarCard({ items }: { items: Item[] }) {
       <CardHeader>
         <CardTitle>Calendar</CardTitle>
         <CardAction>
-          <Link to="/calendar" className="text-xs text-muted-foreground underline">
-            Open
-          </Link>
+          <Button asChild size="sm" variant="outline">
+            <Link to="/calendar">Open</Link>
+          </Button>
         </CardAction>
       </CardHeader>
       <CardContent>

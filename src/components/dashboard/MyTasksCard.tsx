@@ -12,9 +12,9 @@ import type { Item } from "@/types";
 type TaskTab = "all" | "today" | "upcoming" | "completed";
 
 const TABS: { id: TaskTab; label: string }[] = [
-  { id: "all", label: "All" },
   { id: "today", label: "Today" },
   { id: "upcoming", label: "Upcoming" },
+  { id: "all", label: "All" },
   { id: "completed", label: "Completed" },
 ];
 
@@ -42,7 +42,7 @@ function filterForTab(items: Item[], tab: TaskTab): Item[] {
 }
 
 export function MyTasksCard({ items }: { items: Item[] }) {
-  const [tab, setTab] = useState<TaskTab>("all");
+  const [tab, setTab] = useState<TaskTab>("today");
   const [showAdd, setShowAdd] = useState(false);
   const updateItem = useUpdateItem();
 
@@ -60,7 +60,7 @@ export function MyTasksCard({ items }: { items: Item[] }) {
       <CardHeader>
         <CardTitle>My Tasks</CardTitle>
         <CardAction>
-          <Button size="sm" onClick={() => setShowAdd((s) => !s)}>
+          <Button size="sm" variant="outline" onClick={() => setShowAdd((s) => !s)}>
             {showAdd ? "Close" : "+ Add Task"}
           </Button>
         </CardAction>
@@ -70,7 +70,7 @@ export function MyTasksCard({ items }: { items: Item[] }) {
 
         <div className="flex gap-1">
           {TABS.map((t) => (
-            <Button key={t.id} size="sm" variant={tab === t.id ? "default" : "outline"} onClick={() => setTab(t.id)}>
+            <Button key={t.id} size="sm" variant={tab === t.id ? "outline" : "ghost"} onClick={() => setTab(t.id)}>
               {t.label}
             </Button>
           ))}
