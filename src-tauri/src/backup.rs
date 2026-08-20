@@ -72,28 +72,45 @@ pub fn run_backup(conn: &Connection, folder: &str) -> Result<(), String> {
 }
 
 /// Latest timestamp across the tables a user actually edits day-to-day.
-/// Deliberately excludes `preference` — that's where backup bookkeeping
-/// itself lives (last_backup_at, last_remote_seen_at, ...), so including it
-/// would make every backup look like fresh "activity" and the quiet window
-/// below would never elapse — and `context`, which has no timestamp columns.
-fn last_activity_at(conn: &Connection) -> Option<chrono::DateTime<Utc>> {
-    let raw: Option<String> = conn
-        .query_row(
-            "SELECT MAX(ts) FROM (
-               SELECT MAX(updated_at) AS ts FROM item
-               UNION ALL SELECT MAX(updated_at) FROM note
-               UNION ALL SELECT MAX(updated_at) FROM personal_record
-               UNION ALL SELECT MAX(created_at) FROM inbox_item
-               UNION ALL SELECT MAX(created_at) FROM quick_note
-             )",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .ok()
-        .flatten();
-    raw.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+fn parse_rfc3339(s: Option<String>) -> Option<chrono::DateTime<Utc>> {
+    s.and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
         .map(|d| d.with_timezone(&Utc))
+}
+
+/// Pure decision logic (no I/O), kept separate from `tick` so it can be unit
+/// tested directly against fixed timestamps — the same split google::sync
+/// uses for `decide_pull_action`.
+///
+/// `last_activity_at` comes from `preference.last_activity_at`, which every
+/// mutating command touches (see commands::touch_activity) — deliberately
+/// *not* derived by scanning table timestamp columns, which is what this
+/// replaced: `context` (Class/Project/Program) has no timestamp columns of
+/// its own, so that approach silently never counted editing a class as
+/// "activity," and the automatic backup could go stale for that data
+/// specifically. An explicit touch-on-write doesn't have that blind spot,
+/// for this table or any future one.
+fn is_backup_due(
+    now: chrono::DateTime<Utc>,
+    last_backup_at: Option<chrono::DateTime<Utc>>,
+    last_activity_at: Option<chrono::DateTime<Utc>>,
+    interval_hours: i64,
+) -> bool {
+    let interval_due = match last_backup_at {
+        Some(last) => now - last >= chrono::Duration::hours(interval_hours),
+        None => true,
+    };
+
+    // Backs up roughly QUIET_PERIOD after the user stops editing, in addition
+    // to the fixed interval above, so the shared folder is rarely more than a
+    // few minutes stale for whichever device picks it up next (see
+    // check_remote_backup / restore_from_backup).
+    let activity_due = match (last_activity_at, last_backup_at) {
+        (Some(activity), Some(last)) if activity > last => now - activity >= QUIET_PERIOD,
+        (Some(_), None) => true,
+        _ => false,
+    };
+
+    interval_due || activity_due
 }
 
 fn tick(conn: &Connection) {
@@ -103,26 +120,10 @@ fn tick(conn: &Connection) {
     let interval_hours: i64 = get_pref(conn, "backup_interval_hours")
         .and_then(|v| v.parse().ok())
         .unwrap_or(24);
-    let last_backup_at = get_pref(conn, "last_backup_at")
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-        .map(|d| d.with_timezone(&Utc));
+    let last_backup_at = parse_rfc3339(get_pref(conn, "last_backup_at"));
+    let last_activity_at = parse_rfc3339(get_pref(conn, "last_activity_at"));
 
-    let interval_due = match last_backup_at {
-        Some(last) => Utc::now() - last >= chrono::Duration::hours(interval_hours),
-        None => true,
-    };
-
-    // Backs up roughly QUIET_PERIOD after the user stops editing, in addition
-    // to the fixed daily interval above, so the shared folder is rarely more
-    // than a few minutes stale for whichever device picks it up next (see
-    // check_remote_backup / restore_from_backup).
-    let activity_due = match (last_activity_at(conn), last_backup_at) {
-        (Some(activity), Some(last)) if activity > last => Utc::now() - activity >= QUIET_PERIOD,
-        (Some(_), None) => true,
-        _ => false,
-    };
-
-    if interval_due || activity_due {
+    if is_backup_due(Utc::now(), last_backup_at, last_activity_at, interval_hours) {
         if let Err(e) = run_backup(conn, &folder) {
             eprintln!("[backup] failed: {e}");
         }
@@ -298,6 +299,71 @@ mod tests {
             params![id, title, now],
         )
         .unwrap();
+    }
+
+    fn t(minute: u32) -> chrono::DateTime<Utc> {
+        use chrono::TimeZone;
+        Utc.with_ymd_and_hms(2026, 1, 1, 12, minute, 0).unwrap()
+    }
+
+    #[test]
+    fn never_backed_up_before_is_always_due() {
+        assert!(is_backup_due(t(0), None, None, 24));
+    }
+
+    #[test]
+    fn quiet_period_not_yet_elapsed_is_not_due() {
+        let last_backup = t(0);
+        let activity = t(1); // changed 1 minute after the last backup
+        let now = t(4); // only 4 minutes since that change — QUIET_PERIOD is 5
+        assert!(!is_backup_due(now, Some(last_backup), Some(activity), 24));
+    }
+
+    #[test]
+    fn quiet_period_elapsed_since_activity_is_due() {
+        let last_backup = t(0);
+        let activity = t(1);
+        let now = t(10); // 9 minutes of quiet since the change
+        assert!(is_backup_due(now, Some(last_backup), Some(activity), 24));
+    }
+
+    #[test]
+    fn activity_at_or_before_last_backup_does_not_force_a_backup() {
+        // Nothing changed since the last backup — the daily interval alone governs.
+        let last_backup = t(10);
+        let activity = t(5); // stale — predates the last backup
+        let now = t(30);
+        assert!(!is_backup_due(now, Some(last_backup), Some(activity), 24));
+    }
+
+    #[test]
+    fn daily_interval_forces_a_backup_even_without_activity() {
+        let last_backup = t(0);
+        let now = last_backup + chrono::Duration::hours(25);
+        assert!(is_backup_due(now, Some(last_backup), None, 24));
+    }
+
+    /// Regression test for the reported bug: creating a Class (a `context`
+    /// row) alone must mark activity, even though that table has no
+    /// timestamp columns of its own to be scanned for. This exercises
+    /// commands::touch_activity directly against a real DB, not just
+    /// is_backup_due's pure logic above.
+    #[test]
+    fn creating_a_context_alone_counts_as_activity() {
+        let conn = crate::db::init(&scratch_dir().join("life-os.sqlite3")).unwrap();
+        conn.execute(
+            "INSERT INTO context (id, type, name) VALUES ('ctx-1', 'Class', 'CS 101')",
+            [],
+        )
+        .unwrap();
+        assert!(get_pref(&conn, "last_activity_at").is_none()); // not touched yet
+
+        crate::commands::touch_activity(&conn);
+
+        let last_activity_at = get_pref(&conn, "last_activity_at");
+        assert!(last_activity_at.is_some());
+        // With no backup yet at all, that alone should make a backup due.
+        assert!(is_backup_due(Utc::now(), None, parse_rfc3339(last_activity_at), 24));
     }
 
     #[test]

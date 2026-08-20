@@ -3,12 +3,30 @@ use crate::models::{
     Context, ContextInput, InboxItem, InboxItemInput, Item, ItemInput, Note, NoteInput,
     PersonalRecord, PersonalRecordInput, QuickNote, QuickNoteInput,
 };
-use rusqlite::{params, OptionalExtension, Row};
+use rusqlite::{params, Connection, OptionalExtension, Row};
 use tauri::State;
 use uuid::Uuid;
 
 pub(crate) fn now() -> String {
     chrono::Utc::now().to_rfc3339()
+}
+
+/// Marks `preference.last_activity_at`, which backup.rs's automatic-backup
+/// timer watches to decide when a fresh snapshot is due (see
+/// backup::tick/is_backup_due). Every mutating command below calls this.
+/// Previously that timer instead scanned `item`/`note`/`personal_record`/
+/// `inbox_item`/`quick_note` directly for their most recent timestamp —
+/// `context` (Class/Project/Program) has no timestamp columns of its own, so
+/// it was silently excluded, and creating/editing a class alone never
+/// triggered an automatic backup. An explicit touch on every command sidesteps
+/// that: it doesn't matter whether a table has timestamp columns, and a future
+/// table can't be forgotten the way `context` was.
+pub(crate) fn touch_activity(conn: &Connection) {
+    let _ = conn.execute(
+        "INSERT INTO preference (key, value) VALUES ('last_activity_at', ?1) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![now()],
+    );
 }
 
 fn json_to_text(value: &Option<serde_json::Value>) -> Option<String> {
@@ -114,6 +132,7 @@ pub fn create_context(state: State<DbState>, input: ContextInput) -> Result<Cont
         ],
     )
     .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(context)
 }
 
@@ -137,6 +156,7 @@ pub fn update_context(state: State<DbState>, context: Context) -> Result<Context
         ],
     )
     .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(context)
 }
 
@@ -220,6 +240,7 @@ pub fn create_item(state: State<DbState>, input: ItemInput) -> Result<Item, Stri
         ],
     )
     .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(item)
 }
 
@@ -262,6 +283,7 @@ pub fn update_item(state: State<DbState>, mut item: Item) -> Result<Item, String
         ],
     )
     .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(item)
 }
 
@@ -278,6 +300,7 @@ pub fn soft_delete_item(
         params![id, timestamp],
     )
     .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     drop(conn);
     // Wake the background sync loop so the linked Calendar event / Task is
     // deleted on Google's side within seconds instead of waiting out the
@@ -332,6 +355,7 @@ pub fn create_inbox_item(
         ],
     )
     .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(inbox_item)
 }
 
@@ -353,6 +377,7 @@ pub fn delete_inbox_item(state: State<DbState>, id: String) -> Result<(), String
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM inbox_item WHERE id=?1", params![id])
         .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(())
 }
 
@@ -377,6 +402,7 @@ pub fn create_quick_note(state: State<DbState>, input: QuickNoteInput) -> Result
         params![quick_note.id, quick_note.body, quick_note.created_at],
     )
     .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(quick_note)
 }
 
@@ -398,6 +424,7 @@ pub fn delete_quick_note(state: State<DbState>, id: String) -> Result<(), String
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM quick_note WHERE id=?1", params![id])
         .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(())
 }
 
@@ -437,6 +464,7 @@ pub fn create_note(state: State<DbState>, input: NoteInput) -> Result<Note, Stri
         ],
     )
     .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(note)
 }
 
@@ -464,6 +492,7 @@ pub fn delete_note(state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM note WHERE id=?1", params![id])
         .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(())
 }
 
@@ -509,6 +538,7 @@ pub fn create_personal_record(
         ],
     )
     .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(record)
 }
 
@@ -532,6 +562,7 @@ pub fn update_personal_record(
         ],
     )
     .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(record)
 }
 
@@ -556,6 +587,7 @@ pub fn delete_personal_record(state: State<DbState>, id: String) -> Result<(), S
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM personal_record WHERE id=?1", params![id])
         .map_err(|e| e.to_string())?;
+    touch_activity(&conn);
     Ok(())
 }
 
