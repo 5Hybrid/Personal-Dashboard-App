@@ -5,6 +5,7 @@ mod external_apps;
 mod google;
 mod models;
 mod notifications;
+mod search;
 
 use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem};
@@ -149,6 +150,9 @@ pub fn run() {
             disable_autostart,
             notifications::notify_now,
             external_apps::open_app_window,
+            search::search_obsidian_vault,
+            search::read_obsidian_note,
+            search::test_obsidian_vault,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

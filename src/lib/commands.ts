@@ -11,6 +11,8 @@ import type {
   ItemInput,
   Note,
   NoteInput,
+  ObsidianNote,
+  ObsidianVaultStatus,
   PersonalRecord,
   PersonalRecordInput,
   QuickNote,
@@ -75,4 +77,9 @@ export const commands = {
 
   openAppWindow: (id: string, url: string, title: string) =>
     invoke<void>("open_app_window", { id, url, title }),
+
+  searchObsidianVault: (query: string) => invoke<ObsidianNote[]>("search_obsidian_vault", { query }),
+  readObsidianNote: (relativePath: string) =>
+    invoke<string>("read_obsidian_note", { relativePath }),
+  testObsidianVault: (path: string) => invoke<ObsidianVaultStatus>("test_obsidian_vault", { path }),
 };

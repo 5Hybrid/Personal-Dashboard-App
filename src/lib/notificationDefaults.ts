@@ -17,6 +17,7 @@ export const NOTIFICATION_DEFAULTS = {
   sync_interval_minutes: "5",
   backup_folder_path: "",
   backup_interval_hours: "24",
+  obsidian_vault_path: "",
   weather_location: "Calgary, AB",
   user_name: "Nathan",
 } as const;

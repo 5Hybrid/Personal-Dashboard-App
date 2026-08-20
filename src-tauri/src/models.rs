@@ -125,6 +125,26 @@ pub struct PersonalRecordInput {
     pub unit: Option<String>,
 }
 
+/// One Obsidian note matched by `search::search_obsidian_vault`. `path` is
+/// vault-relative (forward-slash separated) so it round-trips back into
+/// `search::read_obsidian_note` regardless of host OS path separators.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ObsidianNote {
+    pub path: String,
+    pub title: String,
+    pub snippet: Option<String>,
+    pub modified: Option<String>,
+}
+
+/// Result of probing a candidate vault folder from the Settings page, before
+/// it's saved as the `obsidian_vault_path` preference.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ObsidianVaultStatus {
+    pub valid: bool,
+    pub note_count: usize,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ItemInput {
     pub title: String,

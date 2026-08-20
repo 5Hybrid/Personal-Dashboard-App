@@ -166,6 +166,19 @@ export interface SyncConflict {
   created_at: string;
 }
 
+export interface ObsidianNote {
+  path: string;
+  title: string;
+  snippet: string | null;
+  modified: string | null;
+}
+
+export interface ObsidianVaultStatus {
+  valid: boolean;
+  note_count: number;
+  error: string | null;
+}
+
 export interface ItemInput {
   title: string;
   description?: string | null;

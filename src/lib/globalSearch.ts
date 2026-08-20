@@ -1,6 +1,6 @@
-import type { Context, InboxItem, Item, Note, PersonalRecord, QuickNote } from "@/types";
+import type { Context, InboxItem, Item, Note, ObsidianNote, PersonalRecord, QuickNote } from "@/types";
 
-export type SearchResultType = "item" | "context" | "note" | "quickNote" | "inbox" | "record";
+export type SearchResultType = "item" | "context" | "note" | "quickNote" | "inbox" | "record" | "obsidian";
 
 export interface SearchResult {
   key: string;
@@ -10,6 +10,10 @@ export interface SearchResult {
   path: string;
   category: Item["category"] | null;
   haystack: string;
+  // Vault-relative path, set only on "obsidian" results — selecting one
+  // shows an inline preview (via useObsidianNote) instead of navigating,
+  // since there's no in-app route for a vault note.
+  vaultPath?: string;
 }
 
 export const SEARCH_GROUP_LABEL: Record<SearchResultType, string> = {
@@ -19,7 +23,24 @@ export const SEARCH_GROUP_LABEL: Record<SearchResultType, string> = {
   quickNote: "Quick Notes",
   inbox: "Inbox",
   record: "Gym Records",
+  obsidian: "Obsidian Vault",
 };
+
+// Obsidian results come from a live Rust-side vault scan (not the static
+// app-data index below), so they're converted into the shared SearchResult
+// shape by the caller rather than built into buildSearchIndex/searchIndex.
+export function obsidianNoteToSearchResult(note: ObsidianNote): SearchResult {
+  return {
+    key: `obsidian:${note.path}`,
+    type: "obsidian",
+    title: note.title,
+    subtitle: note.snippet,
+    path: "",
+    category: null,
+    haystack: "",
+    vaultPath: note.path,
+  };
+}
 
 function contextPath(context: Context): string {
   switch (context.type) {

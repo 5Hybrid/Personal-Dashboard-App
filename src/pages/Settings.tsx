@@ -14,6 +14,7 @@ import {
   useGoogleConnected,
   useSyncNow,
 } from "@/hooks/useGoogle";
+import { useTestObsidianVault } from "@/hooks/useObsidianVault";
 import { useBackupNow, usePreferences, useSetPreference } from "@/hooks/usePreferences";
 import { useTheme } from "@/hooks/useTheme";
 import { parseSelectedCalendarIds, SELECTED_CALENDARS_PREF_KEY } from "@/lib/googleCalendarSelection";
@@ -466,6 +467,59 @@ function BackupSection() {
   );
 }
 
+function ObsidianVaultSection() {
+  const { data: prefs } = usePreferences();
+  const setPreference = useSetPreference();
+  const testVault = useTestObsidianVault();
+  const [localValue, setLocalValue] = useState<string | null>(null);
+
+  const vaultPath = localValue ?? pref(prefs, "obsidian_vault_path");
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Obsidian Vault</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-sm text-muted-foreground">
+          Point this at your Obsidian vault's folder to search and preview its notes from the
+          Search palette (Ctrl/Cmd+K), alongside your Life OS items and notes.
+        </p>
+        <div className="flex items-center gap-2">
+          <Input
+            value={vaultPath}
+            placeholder="e.g. C:\\Users\\you\\Documents\\MyVault"
+            onChange={(e) => {
+              setLocalValue(e.target.value);
+              testVault.reset();
+            }}
+            onBlur={() => {
+              setPreference.mutate({ key: "obsidian_vault_path", value: vaultPath });
+              setLocalValue(null);
+            }}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => testVault.mutate(vaultPath)}
+            disabled={testVault.isPending || !vaultPath.trim()}
+          >
+            {testVault.isPending ? "Checking…" : "Test Connection"}
+          </Button>
+          {testVault.data && (
+            <span className={testVault.data.valid ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>
+              {testVault.data.valid
+                ? `Found ${testVault.data.note_count} note${testVault.data.note_count === 1 ? "" : "s"}.`
+                : testVault.data.error}
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ThemeSection() {
   const { theme, setTheme } = useTheme();
 
@@ -535,6 +589,7 @@ export default function Settings() {
       <NotificationPreferencesSection />
       <SyncIntervalSection />
       <BackupSection />
+      <ObsidianVaultSection />
       <AutostartSection />
       <ThemeSection />
     </div>
