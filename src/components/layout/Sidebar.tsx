@@ -10,6 +10,7 @@ import {
   ListTodo,
   Monitor,
   Moon,
+  Search,
   Settings,
   Sun,
   User,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
+import { useSearchStore } from "@/store/searchStore";
 import type { Theme } from "@/store/themeStore";
 
 const THEME_CYCLE: Record<Theme, Theme> = {
@@ -48,6 +50,7 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const { theme, setTheme } = useTheme();
+  const openSearch = useSearchStore((s) => s.open);
   const ThemeIcon = THEME_ICON[theme];
 
   return (
@@ -61,6 +64,19 @@ export function Sidebar() {
           className="rounded-md p-1.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground hover:backdrop-blur-sm"
         >
           <ThemeIcon className="size-4" />
+        </button>
+      </div>
+      <div className="px-2 pb-2">
+        <button
+          type="button"
+          onClick={openSearch}
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+        >
+          <Search className="size-4" />
+          <span className="flex-1 text-left">Search</span>
+          <kbd className="rounded border border-[color:var(--glass-border)] px-1 py-0.5 text-[10px] text-sidebar-foreground/50">
+            Ctrl K
+          </kbd>
         </button>
       </div>
       <nav className="flex-1 px-2 space-y-1">
