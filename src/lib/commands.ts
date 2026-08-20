@@ -17,6 +17,7 @@ import type {
   PersonalRecordInput,
   QuickNote,
   QuickNoteInput,
+  RemoteBackupStatus,
   SyncConflict,
 } from "@/types";
 
@@ -68,6 +69,10 @@ export const commands = {
   listCalendars: () => invoke<GoogleCalendarListEntry[]>("list_calendars"),
 
   backupNow: () => invoke<void>("backup_now"),
+  checkRemoteBackup: () => invoke<RemoteBackupStatus | null>("check_remote_backup"),
+  dismissRemoteBackup: (writtenAt: string) =>
+    invoke<void>("dismiss_remote_backup", { writtenAt }),
+  restoreFromBackup: (writtenAt: string) => invoke<void>("restore_from_backup", { writtenAt }),
 
   isAutostartEnabled: () => invoke<boolean>("is_autostart_enabled"),
   enableAutostart: () => invoke<void>("enable_autostart"),

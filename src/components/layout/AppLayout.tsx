@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { GlobalSearch } from "@/components/search/GlobalSearch";
+import { RemoteBackupPrompt } from "@/components/backup/RemoteBackupPrompt";
 
 export function AppLayout() {
   return (
@@ -10,6 +11,7 @@ export function AppLayout() {
         <Outlet />
       </main>
       <GlobalSearch />
+      <RemoteBackupPrompt />
     </div>
   );
 }

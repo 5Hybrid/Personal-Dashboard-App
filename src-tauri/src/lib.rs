@@ -60,6 +60,7 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
             let db_path = app_data_dir.join("life-os.sqlite3");
+            backup::apply_pending_restore(&db_path);
             let conn = db::init(&db_path)?;
             app.manage(db::DbState(Mutex::new(conn)));
             app.manage(db::DbPathState(db_path.clone()));
@@ -145,6 +146,9 @@ pub fn run() {
             google::commands::list_calendar_events_in_range,
             google::commands::list_calendars,
             backup::backup_now,
+            backup::check_remote_backup,
+            backup::dismiss_remote_backup,
+            backup::restore_from_backup,
             is_autostart_enabled,
             enable_autostart,
             disable_autostart,

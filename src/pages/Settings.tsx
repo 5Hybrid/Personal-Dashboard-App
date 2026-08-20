@@ -438,7 +438,10 @@ function BackupSection() {
         <p className="text-sm text-muted-foreground">
           There's no cloud backend by design, so life-os.sqlite3 is the only copy of everything.
           Point this at a folder synced by Drive, Dropbox, OneDrive, etc. and a snapshot gets
-          written there once a day.
+          written there roughly 5 minutes after you stop editing (and at least once a day
+          either way). Point another device's Life OS at the same folder and it'll offer to load
+          the newer snapshot next time it checks — that's also how to move everything to a new
+          device.
         </p>
         <div className="flex items-center gap-2">
           <Input

@@ -166,6 +166,10 @@ export interface SyncConflict {
   created_at: string;
 }
 
+export interface RemoteBackupStatus {
+  written_at: string;
+}
+
 export interface ObsidianNote {
   path: string;
   title: string;
