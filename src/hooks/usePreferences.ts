@@ -26,6 +26,26 @@ export function useBackupNow() {
   });
 }
 
+/**
+ * Manually pulls whatever's in the shared backup folder, rather than waiting
+ * for useRemoteBackupStatus's poll to notice it. Reuses check_remote_backup's
+ * device-id/already-seen guards, so this stays a no-op when the folder holds
+ * nothing newer than what's already here (including this device's own last
+ * push) — it just runs that check on demand instead of every 5 minutes.
+ * `synced: true` never actually resolves for the caller, since
+ * restore_from_backup restarts the app on success.
+ */
+export function useSyncFromBackup() {
+  return useMutation({
+    mutationFn: async () => {
+      const status = await commands.checkRemoteBackup();
+      if (!status) return { synced: false as const };
+      await commands.restoreFromBackup(status.written_at);
+      return { synced: true as const };
+    },
+  });
+}
+
 const REMOTE_BACKUP_KEY = ["remoteBackupStatus"];
 // Matches backup.rs's QUIET_PERIOD, so a device that just made an edit and a
 // device that's just polling for a newer snapshot notice a change on roughly

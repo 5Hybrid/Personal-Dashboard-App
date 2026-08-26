@@ -15,7 +15,7 @@ import {
   useSyncNow,
 } from "@/hooks/useGoogle";
 import { useTestObsidianVault } from "@/hooks/useObsidianVault";
-import { useBackupNow, usePreferences, useSetPreference } from "@/hooks/usePreferences";
+import { useBackupNow, usePreferences, useSetPreference, useSyncFromBackup } from "@/hooks/usePreferences";
 import { useTheme } from "@/hooks/useTheme";
 import { parseSelectedCalendarIds, SELECTED_CALENDARS_PREF_KEY } from "@/lib/googleCalendarSelection";
 import { NOTIFICATION_DEFAULTS, WEEKDAY_LABELS } from "@/lib/notificationDefaults";
@@ -424,7 +424,9 @@ function BackupSection() {
   const { data: prefs } = usePreferences();
   const setPreference = useSetPreference();
   const backupNow = useBackupNow();
+  const syncFromBackup = useSyncFromBackup();
   const [localValue, setLocalValue] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const folderPath = localValue ?? pref(prefs, "backup_folder_path");
   const lastBackupAt = prefs?.["last_backup_at"];
@@ -458,6 +460,22 @@ function BackupSection() {
           <Button onClick={() => backupNow.mutate()} disabled={backupNow.isPending || !folderPath.trim()}>
             {backupNow.isPending ? "Backing up…" : "Backup Now"}
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSyncMessage(null);
+              syncFromBackup.mutate(undefined, {
+                onSuccess: (result) => {
+                  if (!result.synced) {
+                    setSyncMessage("Already up to date — no newer backup found in that folder.");
+                  }
+                },
+              });
+            }}
+            disabled={syncFromBackup.isPending || !folderPath.trim()}
+          >
+            {syncFromBackup.isPending ? "Checking…" : "Sync"}
+          </Button>
           <span className="text-xs text-muted-foreground">
             {lastBackupAt ? `Last backup: ${new Date(lastBackupAt).toLocaleString()}` : "No backup yet"}
           </span>
@@ -465,6 +483,10 @@ function BackupSection() {
         {backupNow.isError && (
           <p className="text-sm text-destructive">{String(backupNow.error)}</p>
         )}
+        {syncFromBackup.isError && (
+          <p className="text-sm text-destructive">{String(syncFromBackup.error)}</p>
+        )}
+        {syncMessage && <p className="text-sm text-muted-foreground">{syncMessage}</p>}
       </CardContent>
     </Card>
   );
