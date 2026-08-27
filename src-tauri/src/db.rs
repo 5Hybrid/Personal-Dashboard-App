@@ -2,6 +2,7 @@ use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
+use uuid::Uuid;
 
 pub struct DbState(pub Mutex<Connection>);
 
@@ -158,6 +159,7 @@ pub fn init(db_path: &Path) -> rusqlite::Result<Connection> {
     conn.busy_timeout(Duration::from_secs(5))?;
     conn.execute_batch(SCHEMA)?;
     migrate_split_last_synced_at(&conn)?;
+    migrate_regenerate_device_id(&conn)?;
     Ok(conn)
 }
 
@@ -177,4 +179,82 @@ fn migrate_split_last_synced_at(conn: &Connection) -> rusqlite::Result<()> {
          UPDATE item SET last_synced_at_calendar = last_synced_at, last_synced_at_tasks = last_synced_at;
          ALTER TABLE item DROP COLUMN last_synced_at;",
     )
+}
+
+/// One-time repair for devices that hit the device_id-collision bug fixed in
+/// backup::apply_pending_restore: before that fix, restoring a snapshot to
+/// set up a new device (Settings' documented way to "move everything to a
+/// new device") copied the source device's `device_id` verbatim, leaving the
+/// two devices permanently indistinguishable to check_remote_backup's "skip
+/// my own last push" guard — sync would look like "already up to date"
+/// forever even for genuinely new data. Updating the code alone doesn't fix
+/// an id already inherited that way, so every device gets a fresh,
+/// guaranteed-unique `device_id` exactly once here. Harmless for devices
+/// that were never affected — it's just a new random identity, and nothing
+/// else keys off the specific value.
+fn migrate_regenerate_device_id(conn: &Connection) -> rusqlite::Result<()> {
+    let already_migrated: bool = conn
+        .prepare("SELECT 1 FROM preference WHERE key = 'device_id_migrated_v1'")?
+        .exists([])?;
+    if already_migrated {
+        return Ok(());
+    }
+    conn.execute(
+        "INSERT INTO preference (key, value) VALUES ('device_id', ?1) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [Uuid::new_v4().to_string()],
+    )?;
+    conn.execute(
+        "INSERT INTO preference (key, value) VALUES ('device_id_migrated_v1', 'true') \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [],
+    )?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid as TestUuid;
+
+    fn scratch_db_path() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("life-os-db-test-{}", TestUuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("life-os.sqlite3")
+    }
+
+    fn get_pref(conn: &Connection, key: &str) -> Option<String> {
+        conn.query_row(
+            "SELECT value FROM preference WHERE key = ?1",
+            [key],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+    }
+
+    /// A device that already had another device's `device_id` baked in by
+    /// the pre-fix restore bug gets a fresh, unique one on its next launch.
+    #[test]
+    fn regenerates_an_inherited_device_id_exactly_once() {
+        let path = scratch_db_path();
+        let conn = init(&path).unwrap();
+        // Simulate the pre-fix bug: this device's id collides with another's.
+        conn.execute(
+            "INSERT INTO preference (key, value) VALUES ('device_id', 'collided-id') \
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [],
+        )
+        .unwrap();
+        conn.execute("DELETE FROM preference WHERE key = 'device_id_migrated_v1'", [])
+            .unwrap();
+
+        migrate_regenerate_device_id(&conn).unwrap();
+        let regenerated = get_pref(&conn, "device_id").unwrap();
+        assert_ne!(regenerated, "collided-id");
+
+        // Re-running (as happens on every subsequent launch) must not keep
+        // reassigning a new id each time.
+        migrate_regenerate_device_id(&conn).unwrap();
+        assert_eq!(get_pref(&conn, "device_id").unwrap(), regenerated);
+    }
 }
