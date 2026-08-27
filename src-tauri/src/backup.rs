@@ -265,6 +265,17 @@ pub fn restore_from_backup(
 /// `db_path` exists for this process, which is what makes the swap safe: no
 /// live connection or background thread has the old file open to be confused
 /// by it disappearing out from under them mid-run.
+///
+/// Preserves this device's own `device_id` across the swap rather than
+/// letting the restored snapshot's copy win. Without this, a device set up
+/// by restoring someone else's backup (the Settings copy literally
+/// recommends this as "how to move everything to a new device") ends up with
+/// the *source* device's `device_id`, since VACUUM INTO copies the whole
+/// `preference` table verbatim. From then on this device and the one it
+/// restored from are indistinguishable to check_remote_backup's "skip if
+/// it's my own last push" guard, so every future push from either side gets
+/// silently treated as the other's own and never offered — sync looks like
+/// it "already up to date" forever, even though real data is going stale.
 pub fn apply_pending_restore(db_path: &Path) {
     let marker_path = db_path.with_extension("sqlite3.pending-restore");
     let Ok(staged) = std::fs::read_to_string(&marker_path) else {
@@ -272,10 +283,17 @@ pub fn apply_pending_restore(db_path: &Path) {
     };
     let staged_path = PathBuf::from(staged.trim());
     if staged_path.exists() {
+        let local_device_id = Connection::open(db_path).ok().and_then(|c| get_pref(&c, "device_id"));
+
         let _ = std::fs::remove_file(db_path);
         let _ = std::fs::remove_file(db_path.with_extension("sqlite3-wal"));
         let _ = std::fs::remove_file(db_path.with_extension("sqlite3-shm"));
         let _ = std::fs::rename(&staged_path, db_path);
+
+        if let Ok(conn) = Connection::open(db_path) {
+            let id = local_device_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+            set_pref(&conn, "device_id", &id);
+        }
     }
     let _ = std::fs::remove_file(&marker_path);
 }
@@ -407,13 +425,14 @@ mod tests {
         let b_db_path = b_dir.join("life-os.sqlite3");
         let b = crate::db::init(&b_db_path).unwrap();
         insert_marker_item(&b, "item-b", "From device B, should be gone after restore");
+        let b_device_id = ensure_device_id(&b);
         drop(b);
 
         stage_restore(&b_db_path, &folder, &written_at).expect("staging should succeed");
         apply_pending_restore(&b_db_path);
 
         let restored = crate::db::init(&b_db_path).unwrap();
-        assert_eq!(get_pref(&restored, "device_id").unwrap(), a_device_id);
+        // The data comes from A's snapshot...
         let titles: Vec<String> = restored
             .prepare("SELECT title FROM item ORDER BY id")
             .unwrap()
@@ -422,6 +441,53 @@ mod tests {
             .collect::<rusqlite::Result<_>>()
             .unwrap();
         assert_eq!(titles, vec!["From device A".to_string()]);
+        // ...but B keeps its own device identity rather than adopting A's,
+        // otherwise every future push from either device would look like
+        // "my own last push" to the other and never sync again (see the
+        // regression test below).
+        assert_ne!(get_pref(&restored, "device_id").unwrap(), a_device_id);
+        assert_eq!(get_pref(&restored, "device_id").unwrap(), b_device_id);
+    }
+
+    /// Regression test for the reported bug: a device set up by restoring
+    /// another device's backup (the Settings copy calls this out as "how to
+    /// move everything to a new device") must still see that other device's
+    /// *later* pushes as new, rather than being stuck at "already up to
+    /// date" forever because it inherited that device's `device_id`.
+    #[test]
+    fn syncing_still_works_after_restoring_to_set_up_a_new_device() {
+        let shared = scratch_dir();
+        let folder = shared.to_string_lossy().to_string();
+
+        let a_db_path = scratch_dir().join("life-os.sqlite3");
+        let a = crate::db::init(&a_db_path).unwrap();
+        insert_marker_item(&a, "item-1", "First class");
+        run_backup(&a, &folder).unwrap();
+        let first_written_at = get_pref(&a, "last_backup_at").unwrap();
+        drop(a);
+
+        // B is set up fresh, then immediately restores A's snapshot to move
+        // everything over — the documented new-device flow.
+        let b_db_path = scratch_dir().join("life-os.sqlite3");
+        crate::db::init(&b_db_path).unwrap();
+        stage_restore(&b_db_path, &folder, &first_written_at).expect("staging should succeed");
+        apply_pending_restore(&b_db_path);
+        let b = crate::db::init(&b_db_path).unwrap();
+        set_pref(&b, "last_remote_seen_at", &first_written_at); // restore_from_backup does this too
+        drop(b);
+
+        // Later, A adds another class and backs up again.
+        let a = crate::db::init(&a_db_path).unwrap();
+        insert_marker_item(&a, "item-2", "Second class");
+        run_backup(&a, &folder).unwrap();
+        let second_written_at = get_pref(&a, "last_backup_at").unwrap();
+        assert_ne!(first_written_at, second_written_at);
+
+        // B should see it as new, not silently skip it as its own.
+        let b = crate::db::init(&b_db_path).unwrap();
+        let status = check_remote_backup_impl(&b, &folder)
+            .expect("b should still detect a's later push after the earlier restore");
+        assert_eq!(status.written_at, second_written_at);
     }
 
     #[test]
