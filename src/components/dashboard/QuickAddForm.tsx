@@ -1,12 +1,17 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useContexts } from "@/hooks/useContexts";
 import { useCreateInboxItem } from "@/hooks/useInbox";
 import { useCreateItem } from "@/hooks/useItems";
 import { ALL_CATEGORIES, CATEGORY_TO_CONTEXT_TYPE } from "@/lib/categoryContext";
 import { parseQuickAdd, type QuickAddDraft } from "@/lib/quickAdd";
 import type { Category } from "@/types";
+
+// Radix Select.Item can't take an empty-string value, so "no context" uses
+// this sentinel and gets translated back to "" here.
+const NO_CONTEXT = "__none__";
 
 function DraftConfirm({ draft, onDone }: { draft: QuickAddDraft; onDone: () => void }) {
   const { data: contexts } = useContexts();
@@ -48,34 +53,41 @@ function DraftConfirm({ draft, onDone }: { draft: QuickAddDraft; onDone: () => v
         </label>
         <label className="text-xs">
           Category
-          <select
-            className="block h-9 rounded-md border px-2 text-sm"
+          <Select
             value={category}
-            onChange={(e) => {
-              setCategory(e.target.value as Category);
+            onValueChange={(v) => {
+              setCategory(v as Category);
               setContextId("");
             }}
           >
-            {ALL_CATEGORIES.map((cat) => (
-              <option key={cat}>{cat}</option>
-            ))}
-          </select>
+            <SelectTrigger className="block w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ALL_CATEGORIES.map((cat) => (
+                <SelectItem key={cat} value={cat}>
+                  {cat}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
         {contextType ? (
           <label className="text-xs">
             {contextType}
-            <select
-              className="block h-9 rounded-md border px-2 text-sm"
-              value={contextId}
-              onChange={(e) => setContextId(e.target.value)}
-            >
-              <option value="">— none —</option>
-              {relevantContexts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <Select value={contextId || NO_CONTEXT} onValueChange={(v) => setContextId(v === NO_CONTEXT ? "" : v)}>
+              <SelectTrigger className="block w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_CONTEXT}>— none —</SelectItem>
+                {relevantContexts.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
         ) : (
           <label className="text-xs">

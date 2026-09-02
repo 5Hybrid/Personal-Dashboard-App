@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCalendarEventsInRangeForCalendars, useCalendarList, useGoogleConnected } from "@/hooks/useGoogle";
 import { useCreateItem, useSoftDeleteItem, useUpdateItem } from "@/hooks/useItems";
 import { useNowTick } from "@/hooks/useNowTick";
 import { usePreferences, useSetPreference } from "@/hooks/usePreferences";
-import { minutesFromTimeString, minutesToTimeString, toDateKey } from "@/lib/calendarGrid";
+import { addDays, minutesFromTimeString, minutesToTimeString, parseDateOnly, toDateKey } from "@/lib/calendarGrid";
 import { CATEGORY_HEX } from "@/lib/categoryColors";
 import {
   ADD_BLOCK_DURATION_MINUTES,
@@ -29,10 +30,12 @@ import {
   SLEEP_WAKE_PREF_KEY,
   snapMinutes,
   unwrapNear,
+  type GoogleRingEntry,
   type RingBlock,
 } from "@/lib/dayRing";
+import { parseSelectedCalendarIds, SELECTED_CALENDARS_PREF_KEY } from "@/lib/googleCalendarSelection";
 import { cn } from "@/lib/utils";
-import type { Category, Item } from "@/types";
+import type { Category, GoogleCalendarEvent, Item } from "@/types";
 
 const ADD_CATEGORY_CHOICES: { category: Category; label: string }[] = [
   { category: "School", label: "Study" },
@@ -65,7 +68,9 @@ interface AddPopoverState {
 }
 
 function blockColor(block: RingBlock): string {
-  return block.kind === "sleep" ? "var(--day-ring-sleep)" : CATEGORY_HEX[block.category!];
+  if (block.kind === "sleep") return "var(--day-ring-sleep)";
+  if (block.kind === "google") return block.color ?? "var(--day-ring-google)";
+  return CATEGORY_HEX[block.category!];
 }
 
 // A single day, 24h ring — Sleep anchors it (a preference, not an Item),
@@ -84,7 +89,67 @@ export function DayRingCard({ items }: { items: Item[] }) {
   const bedtime = prefsQuery.data?.[SLEEP_BEDTIME_PREF_KEY] ?? DEFAULT_SLEEP_BEDTIME;
   const wake = prefsQuery.data?.[SLEEP_WAKE_PREF_KEY] ?? DEFAULT_SLEEP_WAKE;
 
-  const [blocks, setBlocks] = useState<RingBlock[]>(() => buildInitialBlocks(items, bedtime, wake));
+  // Today's live Google Calendar events, merged into the ring alongside
+  // Items — otherwise an event created directly in Google Calendar (never
+  // pulled down as an Item, see sync.rs) would never appear here even though
+  // it already shows on the Calendar page. Mirrors Calendar.tsx's own
+  // primary-plus-selected-calendars query, just scoped to a single day.
+  const { data: googleConnected } = useGoogleConnected();
+  const { data: calendarList } = useCalendarList(!!googleConnected);
+  const selectedCalendarIds = useMemo(
+    () => parseSelectedCalendarIds(prefsQuery.data?.[SELECTED_CALENDARS_PREF_KEY]),
+    [prefsQuery.data],
+  );
+  const primaryCalendarId = useMemo(() => calendarList?.find((c) => c.primary)?.id ?? null, [calendarList]);
+  const calendarIdsToQuery = useMemo(() => {
+    if (!googleConnected) return [];
+    if (!calendarList || calendarList.length === 0) return ["primary"];
+    const ids = new Set<string>([primaryCalendarId ?? "primary"]);
+    for (const id of selectedCalendarIds) ids.add(id);
+    return Array.from(ids);
+  }, [googleConnected, calendarList, primaryCalendarId, selectedCalendarIds]);
+  const colorByCalendarId = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const cal of calendarList ?? []) map.set(cal.id, cal.background_color ?? null);
+    return map;
+  }, [calendarList]);
+
+  // Keyed off today's date, not the 30s `now` tick — the two only differ
+  // once a day (at midnight), so this keeps the query range stable and
+  // avoids refetching Google on every tick.
+  const todayKey = toDateKey(now);
+  const { timeMin, timeMax } = useMemo(() => {
+    const start = parseDateOnly(todayKey);
+    return { timeMin: start.toISOString(), timeMax: addDays(start, 1).toISOString() };
+  }, [todayKey]);
+
+  const eventQueries = useCalendarEventsInRangeForCalendars(calendarIdsToQuery, timeMin, timeMax, !!googleConnected);
+  // `useQueries`'s returned array (and calendarIdsToQuery/colorByCalendarId
+  // above) are new references on many renders even when nothing meaningful
+  // changed — memoizing directly on them reruns this every render, which fed
+  // a `setBlocks` effect below and produced an infinite render loop
+  // ("Maximum update depth exceeded") that pegged the main thread and made
+  // the whole app unresponsive. So instead of trusting any of those
+  // references, this recomputes cheaply every render and then stabilizes the
+  // *returned* reference by comparing a content key — it only actually
+  // changes (and only then feeds the effect below) when an event's id,
+  // last-updated timestamp, or calendar color genuinely changed.
+  const googleEntriesRaw: GoogleRingEntry[] = [];
+  eventQueries.forEach((query, i) => {
+    const calendarId = calendarIdsToQuery[i];
+    const color = colorByCalendarId.get(calendarId) ?? null;
+    for (const event of (query.data as GoogleCalendarEvent[] | undefined) ?? []) {
+      googleEntriesRaw.push({ event, color });
+    }
+  });
+  const googleEntriesKey = googleEntriesRaw.map((e) => `${e.event.id}:${e.event.updated}:${e.color}`).join("|");
+  const googleEntriesRef = useRef<{ key: string; entries: GoogleRingEntry[] }>({ key: "", entries: [] });
+  if (googleEntriesRef.current.key !== googleEntriesKey) {
+    googleEntriesRef.current = { key: googleEntriesKey, entries: googleEntriesRaw };
+  }
+  const googleEntries = googleEntriesRef.current.entries;
+
+  const [blocks, setBlocks] = useState<RingBlock[]>(() => buildInitialBlocks(items, bedtime, wake, googleEntries));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pulse, setPulse] = useState<{ id: string; mode: "scale" | "flash" } | null>(null);
   const [addPopover, setAddPopover] = useState<AddPopoverState | null>(null);
@@ -104,8 +169,8 @@ export function DayRingCard({ items }: { items: Item[] }) {
   // user's pointer.
   useEffect(() => {
     if (draggingRef.current) return;
-    setBlocks(buildInitialBlocks(items, bedtime, wake));
-  }, [items, bedtime, wake]);
+    setBlocks(buildInitialBlocks(items, bedtime, wake, googleEntries));
+  }, [items, bedtime, wake, googleEntries]);
 
   useEffect(() => {
     if (!pulse) return;
@@ -377,7 +442,10 @@ export function DayRingCard({ items }: { items: Item[] }) {
       </CardHeader>
       <CardContent>
         <div className="mx-auto flex flex-col items-center gap-4">
-          <div className="relative" style={{ width: 208, height: 208, "--day-ring-sleep": "#6366f1" } as React.CSSProperties}>
+          <div
+            className="relative"
+            style={{ width: 208, height: 208, "--day-ring-sleep": "#6366f1", "--day-ring-google": "#94a3b8" } as React.CSSProperties}
+          >
             <svg ref={svgRef} viewBox="0 0 420 420" className="h-full w-full overflow-visible">
               <circle
                 cx={RING_CENTER}
@@ -416,6 +484,7 @@ export function DayRingCard({ items }: { items: Item[] }) {
               {blocks.map((block) => {
                 const insetMin = Math.min(1.4, ((block.end - block.start) / 1440) * 360 * 0.18) / 360 * 1440;
                 const color = blockColor(block);
+                const readOnly = block.kind === "google";
                 return (
                   <path
                     key={block.id}
@@ -425,21 +494,22 @@ export function DayRingCard({ items }: { items: Item[] }) {
                     strokeWidth={30}
                     strokeLinecap="round"
                     className={cn(
-                      "cursor-grab active:cursor-grabbing",
+                      readOnly ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
                       block.id === selectedId && "brightness-110",
                       pulse?.id === block.id && pulse.mode === "flash" && "[animation:day-ring-pulse-flash_220ms_ease]",
                     )}
                     style={{ touchAction: "none" }}
-                    onPointerDown={(e) => onBlockPointerDown(e, block.id)}
-                    onPointerMove={onBlockPointerMove}
-                    onPointerUp={onBlockPointerUp}
-                    onPointerCancel={onBlockPointerUp}
+                    onClick={readOnly ? () => selectBlock(block.id) : undefined}
+                    onPointerDown={readOnly ? undefined : (e) => onBlockPointerDown(e, block.id)}
+                    onPointerMove={readOnly ? undefined : onBlockPointerMove}
+                    onPointerUp={readOnly ? undefined : onBlockPointerUp}
+                    onPointerCancel={readOnly ? undefined : onBlockPointerUp}
                   >
                     <title>{block.label}</title>
                   </path>
                 );
               })}
-              {blocks.map((block) => {
+              {blocks.filter((block) => block.kind !== "google").map((block) => {
                 const color = blockColor(block);
                 const p1 = pointOnRing(block.start, RING_RADIUS);
                 const p2 = pointOnRing(block.end, RING_RADIUS);
@@ -539,7 +609,7 @@ export function DayRingCard({ items }: { items: Item[] }) {
                       {fmtDur(block.end - block.start)}
                     </span>
                   </div>
-                  {isOpen && (
+                  {isOpen && block.kind !== "google" && (
                     <div className="flex flex-wrap items-center gap-2 py-1.5 pl-[1.15rem]">
                       <input
                         type="time"

@@ -146,6 +146,42 @@ CREATE TABLE IF NOT EXISTS sync_conflict (
   remote_snapshot TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+
+-- Focus sessions (Focus/Pomodoro system). One row per focus session; a break
+-- is a `phase` of the same row rather than its own history entry, so Open
+-- Focus and preset-duration sessions both "still create a normal session
+-- record" (per the build spec) without a second table. `running_since` +
+-- `accumulated_seconds` is a stopwatch pair, not a stored countdown: elapsed
+-- time is always derived as accumulated_seconds + (running_since is not null
+-- ? now - running_since : 0), so pause/resume/app-restart never lose time to
+-- drift or a missed tick.
+CREATE TABLE IF NOT EXISTS focus_session (
+  id TEXT PRIMARY KEY,
+  intent TEXT NOT NULL,
+  goal TEXT,
+  item_id TEXT REFERENCES item(id),
+  category TEXT,
+  planned_duration_seconds INTEGER,
+  break_duration_seconds INTEGER NOT NULL,
+  phase TEXT NOT NULL DEFAULT 'focus' CHECK (phase IN ('focus','break')),
+  running_since TEXT,
+  accumulated_seconds INTEGER NOT NULL DEFAULT 0,
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  actual_duration_seconds INTEGER,
+  session_state TEXT NOT NULL DEFAULT 'active' CHECK (session_state IN ('active','closed')),
+  outcome TEXT CHECK (outcome IN ('completed','partial','not_completed','interrupted')),
+  reflection_note TEXT,
+  created_at TEXT NOT NULL
+);
+
+-- Enforces "only one focus session in flight at a time" at the DB layer
+-- rather than trusting the frontend alone — session_state stays 'active'
+-- through the break (not just the focus countdown) so a reload mid-break
+-- still rehydrates the right state via get_active_focus_session.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_session_single_active
+  ON focus_session(session_state) WHERE session_state = 'active';
+CREATE INDEX IF NOT EXISTS idx_focus_session_started_at ON focus_session(started_at);
 "#;
 
 pub fn init(db_path: &Path) -> rusqlite::Result<Connection> {

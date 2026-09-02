@@ -145,6 +145,37 @@ pub struct ObsidianVaultStatus {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FocusSession {
+    pub id: String,
+    pub intent: String,
+    pub goal: Option<String>,
+    pub item_id: Option<String>,
+    pub category: Option<String>,
+    pub planned_duration_seconds: Option<i64>,
+    pub break_duration_seconds: i64,
+    pub phase: String,
+    pub running_since: Option<String>,
+    pub accumulated_seconds: i64,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub actual_duration_seconds: Option<i64>,
+    pub session_state: String,
+    pub outcome: Option<String>,
+    pub reflection_note: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StartFocusSessionInput {
+    pub intent: String,
+    pub goal: Option<String>,
+    pub item_id: Option<String>,
+    pub category: Option<String>,
+    pub planned_duration_seconds: Option<i64>,
+    pub break_duration_seconds: i64,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ItemInput {
     pub title: String,

@@ -8,6 +8,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CategoryBadge } from "@/components/CategoryBadge";
 import { QueryBoundary } from "@/components/QueryBoundary";
 import { useContexts } from "@/hooks/useContexts";
@@ -174,15 +175,16 @@ export default function MasterList() {
             </Button>
           ))}
         </div>
-        <select
-          className="ml-auto rounded border px-2 py-1 text-sm"
-          value={groupBy}
-          onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-        >
-          <option value="none">No grouping</option>
-          <option value="category">Group by Category</option>
-          <option value="status">Group by Status</option>
-        </select>
+        <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
+          <SelectTrigger className="ml-auto">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No grouping</SelectItem>
+            <SelectItem value="category">Group by Category</SelectItem>
+            <SelectItem value="status">Group by Status</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex-1 overflow-auto p-4">

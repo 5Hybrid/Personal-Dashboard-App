@@ -1,12 +1,17 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCreateItem, useSoftDeleteItem, useUpdateItem } from "@/hooks/useItems";
 import { assignmentRowClass, COMPLETED_TEXT_CLASS } from "@/lib/classColors";
 import { NEXT_STATUS } from "@/lib/itemStatus";
 import { daysUntil } from "@/lib/masterListViews";
 import { cn } from "@/lib/utils";
 import type { Context, Item } from "@/types";
+
+// Radix Select.Item can't take an empty-string value, so the "no type
+// selected" option uses this sentinel and gets translated back to "" here.
+const NO_TYPE = "__none__";
 
 function AddAssignmentForm({ context }: { context: Context }) {
   const createItem = useCreateItem();
@@ -45,16 +50,22 @@ function AddAssignmentForm({ context }: { context: Context }) {
       </label>
       <label className="text-xs">
         Type
-        <select
-          className="block h-9 rounded-md border px-2 text-sm"
-          value={assignmentType}
-          onChange={(e) => setAssignmentType(e.target.value)}
+        <Select
+          value={assignmentType || NO_TYPE}
+          onValueChange={(v) => setAssignmentType(v === NO_TYPE ? "" : v)}
         >
-          <option value="">—</option>
-          {gradeScaleKeys.map((k) => (
-            <option key={k}>{k}</option>
-          ))}
-        </select>
+          <SelectTrigger className="block w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_TYPE}>—</SelectItem>
+            {gradeScaleKeys.map((k) => (
+              <SelectItem key={k} value={k}>
+                {k}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </label>
       <label className="text-xs">
         Due date
@@ -125,16 +136,22 @@ function EditAssignmentForm({ context, item, onDone }: { context: Context; item:
       </label>
       <label className="text-xs">
         Type
-        <select
-          className="block h-9 rounded-md border px-2 text-sm"
-          value={assignmentType}
-          onChange={(e) => setAssignmentType(e.target.value)}
+        <Select
+          value={assignmentType || NO_TYPE}
+          onValueChange={(v) => setAssignmentType(v === NO_TYPE ? "" : v)}
         >
-          <option value="">—</option>
-          {gradeScaleKeys.map((k) => (
-            <option key={k}>{k}</option>
-          ))}
-        </select>
+          <SelectTrigger className="block w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_TYPE}>—</SelectItem>
+            {gradeScaleKeys.map((k) => (
+              <SelectItem key={k} value={k}>
+                {k}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </label>
       <label className="text-xs">
         Due date

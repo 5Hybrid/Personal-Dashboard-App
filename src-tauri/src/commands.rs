@@ -164,7 +164,9 @@ pub fn update_context(state: State<DbState>, context: Context) -> Result<Context
 pub fn list_contexts(state: State<DbState>) -> Result<Vec<Context>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare(&format!("SELECT {CONTEXT_COLUMNS} FROM context ORDER BY name"))
+        .prepare(&format!(
+            "SELECT {CONTEXT_COLUMNS} FROM context ORDER BY name"
+        ))
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], row_to_context)
@@ -317,9 +319,7 @@ pub fn list_items(state: State<DbState>) -> Result<Vec<Item>, String> {
             "SELECT {ITEM_COLUMNS} FROM item WHERE deleted_at IS NULL ORDER BY created_at DESC"
         ))
         .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], row_to_item)
-        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], row_to_item).map_err(|e| e.to_string())?;
     rows.collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|e| e.to_string())
 }
@@ -390,7 +390,10 @@ fn row_to_quick_note(row: &Row) -> rusqlite::Result<QuickNote> {
 }
 
 #[tauri::command]
-pub fn create_quick_note(state: State<DbState>, input: QuickNoteInput) -> Result<QuickNote, String> {
+pub fn create_quick_note(
+    state: State<DbState>,
+    input: QuickNoteInput,
+) -> Result<QuickNote, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let quick_note = QuickNote {
         id: Uuid::new_v4().to_string(),

@@ -192,7 +192,11 @@ fn tick(app: &AppHandle) {
                     && now_naive < due
                     && !already_logged(&conn, &id, "upcoming_deadline")
                 {
-                    notify(app, "Upcoming Deadline", &format!("\"{title}\" is due soon."));
+                    notify(
+                        app,
+                        "Upcoming Deadline",
+                        &format!("\"{title}\" is due soon."),
+                    );
                     mark_logged(&conn, &id, "upcoming_deadline");
                 }
             }

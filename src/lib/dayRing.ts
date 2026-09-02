@@ -1,6 +1,7 @@
-import { minutesFromTimeString } from "@/lib/calendarGrid";
+import { minutesFromTimeString, toDateKey } from "@/lib/calendarGrid";
 import { todayTimeline } from "@/lib/dashboardData";
-import type { Category, Item } from "@/types";
+import { googleEventColor } from "@/lib/googleEventColors";
+import type { Category, GoogleCalendarEvent, Item } from "@/types";
 
 // Mirrors Calendar.tsx's own local DEFAULT_DURATION_MINUTES — kept as a
 // separate constant here rather than a shared import since the two views
@@ -17,7 +18,7 @@ export const DEFAULT_SLEEP_WAKE = "07:00";
 
 export interface RingBlock {
   id: string;
-  kind: "sleep" | "item";
+  kind: "sleep" | "item" | "google";
   label: string;
   category: Category | null;
   /** Absolute minutes — always in [0, 1440) for `start`; `end` may exceed
@@ -27,6 +28,14 @@ export interface RingBlock {
   start: number;
   end: number;
   item?: Item;
+  /** Resolved display color for a "google" block (event's own colorId, falling back to its calendar's color) — Items use their category color instead. */
+  color?: string | null;
+}
+
+/** A Google Calendar event paired with the fallback display color of the calendar it came from (used when the event has no colorId of its own). */
+export interface GoogleRingEntry {
+  event: GoogleCalendarEvent;
+  color: string | null;
 }
 
 function mod(n: number, m: number): number {
@@ -48,27 +57,11 @@ function sleepBlock(bedtime: string, wake: string): RingBlock {
   return { id: "sleep", kind: "sleep", label: "Sleep", category: null, start, end };
 }
 
-/**
- * Builds today's ring blocks from Sleep (a fixed daily anchor from
- * preferences, not an Item) plus any of today's Items that have a due_time.
- * Items without a time have no natural place on a 24h ring, so they're left
- * for the list-based widgets instead. Real-world data can have two things
- * genuinely scheduled at once — rather than let the ring's neighbor-clamped
- * drag math choke on an overlap, a single forward compaction pass nudges a
- * later block's start up to the previous block's end, preserving durations.
- * This recomputes from source data on every call, so a compacted position
- * is display-only unless the user then actually drags that block.
- */
-export function buildInitialBlocks(items: Item[], bedtime: string, wake: string): RingBlock[] {
-  const blocks: RingBlock[] = [sleepBlock(bedtime, wake)];
-
-  for (const item of todayTimeline(items)) {
-    if (!item.due_time) continue;
-    const start = minutesFromTimeString(item.due_time);
-    const end = start + (item.estimated_duration ?? DEFAULT_ITEM_DURATION_MINUTES);
-    blocks.push({ id: item.id, kind: "item", label: item.title, category: item.category, start, end, item });
-  }
-
+/** Sorts blocks by start time, then nudges any later block whose start lands
+ *  before the previous block's end up to that end, preserving durations —
+ *  real-world data can have two things genuinely scheduled at once, and this
+ *  keeps the ring's neighbor-clamped drag math from choking on the overlap. */
+function sortAndCompact(blocks: RingBlock[]): RingBlock[] {
   blocks.sort((a, b) => a.start - b.start);
   for (let i = 1; i < blocks.length; i++) {
     if (blocks[i].start < blocks[i - 1].end) {
@@ -78,6 +71,59 @@ export function buildInitialBlocks(items: Item[], bedtime: string, wake: string)
     }
   }
   return blocks;
+}
+
+/**
+ * Builds today's ring blocks from Sleep (a fixed daily anchor from
+ * preferences, not an Item), any of today's Items that have a due_time, and
+ * today's live Google Calendar events that aren't already represented by one
+ * of those Items (an event this app itself pushed to Google shows up in both
+ * places otherwise). Items/events without a time have no natural place on a
+ * 24h ring, so they're left for the list-based widgets instead. This
+ * recomputes from source data on every call, so a compacted position from
+ * `sortAndCompact` is display-only unless the user then actually drags that block.
+ */
+export function buildInitialBlocks(
+  items: Item[],
+  bedtime: string,
+  wake: string,
+  googleEntries: GoogleRingEntry[] = [],
+): RingBlock[] {
+  const blocks: RingBlock[] = [sleepBlock(bedtime, wake)];
+
+  for (const item of todayTimeline(items)) {
+    if (!item.due_time) continue;
+    const start = minutesFromTimeString(item.due_time);
+    const end = start + (item.estimated_duration ?? DEFAULT_ITEM_DURATION_MINUTES);
+    blocks.push({ id: item.id, kind: "item", label: item.title, category: item.category, start, end, item });
+  }
+
+  const knownGoogleIds = new Set(items.map((i) => i.google_calendar_id).filter((id): id is string => !!id));
+  const todayKey = toDateKey(new Date());
+  for (const { event, color } of googleEntries) {
+    if (event.status === "cancelled") continue;
+    if (knownGoogleIds.has(event.id)) continue; // already represented above as an item
+    const dateTime = event.start?.dateTime;
+    if (!dateTime) continue; // all-day event — no natural place on the ring
+    if (dateTime.slice(0, 10) !== todayKey) continue; // multi-day event that only overlaps today
+
+    const start = minutesFromTimeString(dateTime.slice(11, 16));
+    const endDateTime = event.end?.dateTime;
+    const durationMinutes = endDateTime
+      ? Math.max(15, Math.round((new Date(endDateTime).getTime() - new Date(dateTime).getTime()) / 60_000))
+      : DEFAULT_ITEM_DURATION_MINUTES;
+    blocks.push({
+      id: `gcal-${event.id}`,
+      kind: "google",
+      label: event.summary ?? "(untitled)",
+      category: null,
+      start,
+      end: start + durationMinutes,
+      color: googleEventColor(event.color_id, color),
+    });
+  }
+
+  return sortAndCompact(blocks);
 }
 
 export function neighborLimits(blocks: RingBlock[], i: number): { prevEndAbs: number; nextStartAbs: number } {

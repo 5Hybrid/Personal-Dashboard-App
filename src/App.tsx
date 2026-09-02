@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { HashRouter, Route, Routes } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useThemeEffect } from "@/hooks/useTheme";
+import { useFocusStore } from "@/store/focusStore";
 import { cn } from "@/lib/utils";
 import Dashboard from "@/pages/Dashboard";
+import Focus from "@/pages/Focus";
 import Inbox from "@/pages/Inbox";
 import MasterList from "@/pages/MasterList";
 import SchoolHome from "@/pages/school/SchoolHome";
@@ -17,6 +19,12 @@ import Settings from "@/pages/Settings";
 
 function App() {
   useThemeEffect();
+
+  // Resumes an in-progress focus/break session across app relaunches — the
+  // timer itself is DB-persisted (see focusStore.ts), this just loads it in.
+  useEffect(() => {
+    void useFocusStore.getState().hydrate();
+  }, []);
 
   // App() only mounts once per real app launch (HashRouter navigation
   // re-renders the matched Route, it doesn't remount App), so this fade+rise
@@ -38,6 +46,7 @@ function App() {
         <Routes>
           <Route element={<AppLayout />}>
             <Route index element={<Dashboard />} />
+            <Route path="focus" element={<Focus />} />
             <Route path="inbox" element={<Inbox />} />
             <Route path="master-list" element={<MasterList />} />
             <Route path="school" element={<SchoolHome />} />

@@ -13,7 +13,12 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 /// this way has no access to this app's commands. That's not an oversight to
 /// fix later; it's the correct default for embedding a site we don't control.
 #[tauri::command]
-pub fn open_app_window(app: AppHandle, id: String, url: String, title: String) -> Result<(), String> {
+pub fn open_app_window(
+    app: AppHandle,
+    id: String,
+    url: String,
+    title: String,
+) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(&id) {
         let _ = window.show();
         let _ = window.set_focus();

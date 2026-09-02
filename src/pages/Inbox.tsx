@@ -1,11 +1,16 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QueryBoundary } from "@/components/QueryBoundary";
 import { useContexts } from "@/hooks/useContexts";
 import { useCreateInboxItem, useDeleteInboxItem, useInboxItems } from "@/hooks/useInbox";
 import { useCreateItem } from "@/hooks/useItems";
 import { ALL_CATEGORIES, CATEGORY_TO_CONTEXT_TYPE } from "@/lib/categoryContext";
 import type { Category, InboxItem, Priority } from "@/types";
+
+// Radix Select.Item can't take an empty-string value, so "no context" uses
+// this sentinel and gets translated back to "" here.
+const NO_CONTEXT = "__none__";
 
 function CaptureForm() {
   const createInboxItem = useCreateInboxItem();
@@ -79,35 +84,42 @@ function ProcessForm({ inboxItem, onDone }: { inboxItem: InboxItem; onDone: () =
     >
       <label className="text-xs">
         Category
-        <select
-          className="block border rounded px-2 py-1 text-sm"
+        <Select
           value={category}
-          onChange={(e) => {
-            setCategory(e.target.value as Category);
+          onValueChange={(v) => {
+            setCategory(v as Category);
             setContextId("");
           }}
         >
-          {ALL_CATEGORIES.map((cat) => (
-            <option key={cat}>{cat}</option>
-          ))}
-        </select>
+          <SelectTrigger className="block w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ALL_CATEGORIES.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                {cat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </label>
 
       {contextType ? (
         <label className="text-xs">
           {contextType}
-          <select
-            className="block border rounded px-2 py-1 text-sm"
-            value={contextId}
-            onChange={(e) => setContextId(e.target.value)}
-          >
-            <option value="">— none —</option>
-            {relevantContexts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <Select value={contextId || NO_CONTEXT} onValueChange={(v) => setContextId(v === NO_CONTEXT ? "" : v)}>
+            <SelectTrigger className="block w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_CONTEXT}>— none —</SelectItem>
+              {relevantContexts.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
       ) : (
         <label className="text-xs">
@@ -132,15 +144,16 @@ function ProcessForm({ inboxItem, onDone }: { inboxItem: InboxItem; onDone: () =
 
       <label className="text-xs">
         Priority
-        <select
-          className="block border rounded px-2 py-1 text-sm"
-          value={priority}
-          onChange={(e) => setPriority(e.target.value as Priority)}
-        >
-          <option>Low</option>
-          <option>Medium</option>
-          <option>High</option>
-        </select>
+        <Select value={priority} onValueChange={(v) => setPriority(v as Priority)}>
+          <SelectTrigger className="block w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Low">Low</SelectItem>
+            <SelectItem value="Medium">Medium</SelectItem>
+            <SelectItem value="High">High</SelectItem>
+          </SelectContent>
+        </Select>
       </label>
 
       <Button type="submit" size="sm" disabled={createItem.isPending || deleteInboxItem.isPending}>

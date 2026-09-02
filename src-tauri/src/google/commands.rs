@@ -108,7 +108,8 @@ pub fn list_sync_conflicts(state: State<DbPathState>) -> Result<Vec<SyncConflict
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())
 }
 
 /// `resolution` is `"mine"` (discard the remote snapshot; the next push cycle
@@ -118,7 +119,11 @@ pub fn list_sync_conflicts(state: State<DbPathState>) -> Result<Vec<SyncConflict
 /// just stop flagging this specific divergence by advancing last_synced_at to
 /// now, so a *future* change on either side will surface normally).
 #[tauri::command]
-pub fn resolve_conflict(state: State<DbPathState>, id: String, resolution: String) -> Result<(), String> {
+pub fn resolve_conflict(
+    state: State<DbPathState>,
+    id: String,
+    resolution: String,
+) -> Result<(), String> {
     let conn = open_conn(&state)?;
 
     let (item_id, source, remote_snapshot_text): (String, String, String) = conn
@@ -135,11 +140,19 @@ pub fn resolve_conflict(state: State<DbPathState>, id: String, resolution: Strin
         let title = remote.get("title").and_then(|v| v.as_str());
         let due_date = remote.get("due_date").and_then(|v| v.as_str());
         let status = remote.get("status").and_then(|v| v.as_str());
-        let mapped_status = if status == Some("completed") { Some("Completed") } else { None };
+        let mapped_status = if status == Some("completed") {
+            Some("Completed")
+        } else {
+            None
+        };
 
         // Only the conflict's own source channel's last_synced_at advances —
         // the other channel's timeline is untouched (see db.rs / sync.rs).
-        let last_synced_column = if source == "calendar" { "last_synced_at_calendar" } else { "last_synced_at_tasks" };
+        let last_synced_column = if source == "calendar" {
+            "last_synced_at_calendar"
+        } else {
+            "last_synced_at_tasks"
+        };
         let ts = crate::commands::now();
         if let Some(title) = title {
             let _ = conn.execute(
@@ -148,13 +161,23 @@ pub fn resolve_conflict(state: State<DbPathState>, id: String, resolution: Strin
             );
         }
         if let Some(due_date) = due_date {
-            let _ = conn.execute("UPDATE item SET due_date = ?2 WHERE id = ?1", params![item_id, due_date]);
+            let _ = conn.execute(
+                "UPDATE item SET due_date = ?2 WHERE id = ?1",
+                params![item_id, due_date],
+            );
         }
         if let Some(mapped_status) = mapped_status {
-            let _ = conn.execute("UPDATE item SET status = ?2 WHERE id = ?1", params![item_id, mapped_status]);
+            let _ = conn.execute(
+                "UPDATE item SET status = ?2 WHERE id = ?1",
+                params![item_id, mapped_status],
+            );
         }
     } else if resolution == "dismiss" {
-        let last_synced_column = if source == "calendar" { "last_synced_at_calendar" } else { "last_synced_at_tasks" };
+        let last_synced_column = if source == "calendar" {
+            "last_synced_at_calendar"
+        } else {
+            "last_synced_at_tasks"
+        };
         let ts = crate::commands::now();
         let _ = conn.execute(
             &format!("UPDATE item SET {last_synced_column} = ?2 WHERE id = ?1"),
@@ -169,7 +192,10 @@ pub fn resolve_conflict(state: State<DbPathState>, id: String, resolution: Strin
         let access_token = oauth::get_valid_access_token(&conn)?;
         let item: crate::models::Item = conn
             .query_row(
-                &format!("SELECT {} FROM item WHERE id = ?1", crate::commands::ITEM_COLUMNS),
+                &format!(
+                    "SELECT {} FROM item WHERE id = ?1",
+                    crate::commands::ITEM_COLUMNS
+                ),
                 params![item_id],
                 crate::commands::row_to_item,
             )

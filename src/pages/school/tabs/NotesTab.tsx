@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateNote, useDeleteNote, useNotesForContext } from "@/hooks/useNotes";
 import type { Item } from "@/types";
+
+// Radix Select.Item can't take an empty-string value, so "not linked" uses
+// this sentinel and gets translated back to "" here.
+const NOT_LINKED = "__none__";
 
 export function NotesTab({ contextId, items }: { contextId: string; items: Item[] }) {
   const { data: notes, isLoading } = useNotesForContext(contextId);
@@ -33,18 +38,22 @@ export function NotesTab({ contextId, items }: { contextId: string; items: Item[
           rows={3}
         />
         <div className="flex items-center gap-2">
-          <select
-            className="h-9 rounded-md border px-2 text-sm"
-            value={linkedItemId}
-            onChange={(e) => setLinkedItemId(e.target.value)}
+          <Select
+            value={linkedItemId || NOT_LINKED}
+            onValueChange={(v) => setLinkedItemId(v === NOT_LINKED ? "" : v)}
           >
-            <option value="">Not linked to an assignment</option>
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.title}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NOT_LINKED}>Not linked to an assignment</SelectItem>
+              {items.map((item) => (
+                <SelectItem key={item.id} value={item.id}>
+                  {item.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button type="submit" size="sm" disabled={createNote.isPending}>
             Add Note
           </Button>

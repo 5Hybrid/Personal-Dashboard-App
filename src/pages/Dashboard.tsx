@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DayRingCard } from "@/components/dashboard/DayRingCard";
 import { ExternalAppsSection } from "@/components/externalApps/ExternalAppsSection";
-import { FocusTimerCard } from "@/components/dashboard/FocusTimerCard";
+import { FocusWidget } from "@/components/dashboard/FocusWidget";
 import { MyTasksCard } from "@/components/dashboard/MyTasksCard";
 import { QuickNotesCard } from "@/components/dashboard/QuickNotesCard";
 import { SyncConflicts } from "@/components/dashboard/SyncConflicts";
@@ -41,7 +41,7 @@ export default function Dashboard() {
             <div className="lg:col-span-2">
               <MyTasksCard items={allItems} />
             </div>
-            <FocusTimerCard />
+            <FocusWidget />
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

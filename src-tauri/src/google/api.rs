@@ -17,7 +17,10 @@ fn events_url_for(calendar_id: &str) -> String {
     // than replacing it, producing "calendars//primary/events" (a 404) instead
     // of "calendars/primary/events".
     let mut url = url::Url::parse("https://www.googleapis.com/calendar/v3/calendars").unwrap();
-    url.path_segments_mut().unwrap().push(calendar_id).push("events");
+    url.path_segments_mut()
+        .unwrap()
+        .push(calendar_id)
+        .push("events");
     url.to_string()
 }
 
@@ -45,6 +48,18 @@ pub struct CalendarEvent {
     pub start: Option<EventDateTime>,
     #[serde(default)]
     pub end: Option<EventDateTime>,
+    // Google's per-event color override (one of the fixed "1".."11" event
+    // palette ids) — absent when the event just uses its calendar's default
+    // color. See https://developers.google.com/calendar/api/v3/reference/colors.
+    // deserialize-only rename: incoming Google JSON is camelCase, but this
+    // struct's own Serialize impl feeds the frontend too (via Tauri IPC) and
+    // that side needs to stay snake_case to match GoogleCalendarEvent.color_id
+    // in src/types/index.ts — a plain `rename = "colorId"` would apply to
+    // both directions and silently serialize this out as `colorId`, which
+    // `event.color_id` on the frontend would never see (exactly the bug that
+    // made `background_color` below always resolve to null).
+    #[serde(rename(deserialize = "colorId"), default)]
+    pub color_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -60,7 +75,13 @@ pub struct CalendarListEntry {
     pub id: String,
     #[serde(default)]
     pub summary: Option<String>,
-    #[serde(rename = "backgroundColor", default)]
+    // deserialize-only rename — see the comment on CalendarEvent::color_id
+    // above for why this can't be a plain `rename = "backgroundColor"`. This
+    // was that exact bug: every calendar's color silently came back as
+    // `undefined` on the frontend (GoogleCalendarListEntry.background_color),
+    // so DayRingCard/Calendar.tsx/Settings.tsx all fell back to their
+    // default/gray color for every Google calendar, regardless of its real one.
+    #[serde(rename(deserialize = "backgroundColor"), default)]
     pub background_color: Option<String>,
     #[serde(default)]
     pub primary: Option<bool>,
@@ -95,21 +116,31 @@ pub fn create_event(access_token: &str, body: &Value) -> Result<CalendarEvent, S
         .map_err(|e| e.to_string())
 }
 
-pub fn update_event(access_token: &str, event_id: &str, body: &Value) -> Result<CalendarEvent, String> {
-    auth(client().put(format!("{CALENDAR_BASE}/{event_id}")), access_token)
-        .json(body)
-        .send()
-        .map_err(|e| e.to_string())?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json()
-        .map_err(|e| e.to_string())
+pub fn update_event(
+    access_token: &str,
+    event_id: &str,
+    body: &Value,
+) -> Result<CalendarEvent, String> {
+    auth(
+        client().put(format!("{CALENDAR_BASE}/{event_id}")),
+        access_token,
+    )
+    .json(body)
+    .send()
+    .map_err(|e| e.to_string())?
+    .error_for_status()
+    .map_err(|e| e.to_string())?
+    .json()
+    .map_err(|e| e.to_string())
 }
 
 pub fn delete_event(access_token: &str, event_id: &str) -> Result<(), String> {
-    let res = auth(client().delete(format!("{CALENDAR_BASE}/{event_id}")), access_token)
-        .send()
-        .map_err(|e| e.to_string())?;
+    let res = auth(
+        client().delete(format!("{CALENDAR_BASE}/{event_id}")),
+        access_token,
+    )
+    .send()
+    .map_err(|e| e.to_string())?;
     // 410 Gone means it's already deleted on Google's side — treat as success.
     if res.status().is_success() || res.status().as_u16() == 410 || res.status().as_u16() == 404 {
         Ok(())
@@ -120,7 +151,10 @@ pub fn delete_event(access_token: &str, event_id: &str) -> Result<(), String> {
 
 /// Returns (events, next_sync_token). Pass `sync_token: None` for a full initial
 /// sync; pass the previously-returned token thereafter for incremental pulls.
-pub fn list_events(access_token: &str, sync_token: Option<&str>) -> Result<(Vec<CalendarEvent>, Option<String>), String> {
+pub fn list_events(
+    access_token: &str,
+    sync_token: Option<&str>,
+) -> Result<(Vec<CalendarEvent>, Option<String>), String> {
     let mut all_items = Vec::new();
     let mut page_token: Option<String> = None;
     let mut final_sync_token = None;
@@ -197,20 +231,26 @@ pub fn create_task(access_token: &str, body: &Value) -> Result<Task, String> {
 }
 
 pub fn update_task(access_token: &str, task_id: &str, body: &Value) -> Result<Task, String> {
-    auth(client().patch(format!("{TASKS_BASE}/{task_id}")), access_token)
-        .json(body)
-        .send()
-        .map_err(|e| e.to_string())?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json()
-        .map_err(|e| e.to_string())
+    auth(
+        client().patch(format!("{TASKS_BASE}/{task_id}")),
+        access_token,
+    )
+    .json(body)
+    .send()
+    .map_err(|e| e.to_string())?
+    .error_for_status()
+    .map_err(|e| e.to_string())?
+    .json()
+    .map_err(|e| e.to_string())
 }
 
 pub fn delete_task(access_token: &str, task_id: &str) -> Result<(), String> {
-    let res = auth(client().delete(format!("{TASKS_BASE}/{task_id}")), access_token)
-        .send()
-        .map_err(|e| e.to_string())?;
+    let res = auth(
+        client().delete(format!("{TASKS_BASE}/{task_id}")),
+        access_token,
+    )
+    .send()
+    .map_err(|e| e.to_string())?;
     if res.status().is_success() || res.status().as_u16() == 404 {
         Ok(())
     } else {
@@ -255,7 +295,10 @@ pub fn list_tasks(access_token: &str, updated_min: Option<&str>) -> Result<Vec<T
 /// Read-only "what's coming up" listing for the Dashboard preview / Calendar
 /// page — distinct from `list_events`, which serves the incremental sync loop
 /// and has different (syncToken-based) semantics.
-pub fn list_upcoming_events(access_token: &str, max_results: i64) -> Result<Vec<CalendarEvent>, String> {
+pub fn list_upcoming_events(
+    access_token: &str,
+    max_results: i64,
+) -> Result<Vec<CalendarEvent>, String> {
     let now = chrono::Utc::now().to_rfc3339();
     let max_results_str = max_results.to_string();
     let query = [
@@ -357,7 +400,10 @@ pub fn list_events_in_range(
 /// Read-only "what's outstanding" listing for the Dashboard's Tasks preview.
 pub fn list_upcoming_tasks(access_token: &str, max_results: i64) -> Result<Vec<Task>, String> {
     let max_results_str = max_results.to_string();
-    let query = [("showCompleted", "false"), ("maxResults", max_results_str.as_str())];
+    let query = [
+        ("showCompleted", "false"),
+        ("maxResults", max_results_str.as_str()),
+    ];
     let parsed: TaskListResponse = auth(client().get(TASKS_BASE), access_token)
         .query(&query)
         .send()
@@ -390,9 +436,10 @@ pub fn event_body(
             // timed event always needs an end strictly after its start — fall
             // back to a sensible default when the Item has no estimated_duration.
             let duration = chrono::Duration::minutes(duration_minutes.unwrap_or(30).max(1));
-            let naive_end = chrono::NaiveDateTime::parse_from_str(&naive_start, "%Y-%m-%dT%H:%M:%S")
-                .map(|naive| (naive + duration).format("%Y-%m-%dT%H:%M:%S").to_string())
-                .unwrap_or_else(|_| naive_start.clone());
+            let naive_end =
+                chrono::NaiveDateTime::parse_from_str(&naive_start, "%Y-%m-%dT%H:%M:%S")
+                    .map(|naive| (naive + duration).format("%Y-%m-%dT%H:%M:%S").to_string())
+                    .unwrap_or_else(|_| naive_start.clone());
             (
                 json!({ "dateTime": format!("{naive_start}{offset}") }),
                 json!({ "dateTime": format!("{naive_end}{offset}") }),
@@ -414,7 +461,12 @@ pub fn event_body(
     })
 }
 
-pub fn task_body(title: &str, notes: Option<&str>, due_date: Option<&str>, completed: bool) -> Value {
+pub fn task_body(
+    title: &str,
+    notes: Option<&str>,
+    due_date: Option<&str>,
+    completed: bool,
+) -> Value {
     json!({
         "title": title,
         "notes": notes,
@@ -454,6 +506,9 @@ mod tests {
         // this is what actually justifies path_segments_mut over a hand-built
         // format! string.
         let url = events_url_for("a b");
-        assert_eq!(url, "https://www.googleapis.com/calendar/v3/calendars/a%20b/events");
+        assert_eq!(
+            url,
+            "https://www.googleapis.com/calendar/v3/calendars/a%20b/events"
+        );
     }
 }

@@ -2,6 +2,7 @@ mod backup;
 mod commands;
 mod db;
 mod external_apps;
+mod focus;
 mod google;
 mod models;
 mod notifications;
@@ -12,6 +13,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_updater::UpdaterExt;
 
 /// Arg the autostart plugin re-launches the app with at login (see the
 /// plugin::init call below) — lets setup() tell "the user double-clicked the
@@ -32,6 +34,33 @@ fn enable_autostart(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn disable_autostart(app: tauri::AppHandle) -> Result<(), String> {
     app.autolaunch().disable().map_err(|e| e.to_string())
+}
+
+/// Checks the GitHub Releases `latest.json` (see tauri.conf.json's updater
+/// endpoint) for a newer signed build. Fully silent by design: no dialog,
+/// no progress UI — if a newer version exists it's downloaded, installed,
+/// and the app restarts itself onto it without asking. Only tagged releases
+/// (see .github/workflows/release.yml) ever appear here, so this can't pick
+/// up an untagged/broken commit from main.
+async fn check_for_update(app: tauri::AppHandle) {
+    let updater = match app.updater() {
+        Ok(updater) => updater,
+        Err(e) => {
+            eprintln!("updater unavailable: {e}");
+            return;
+        }
+    };
+    match updater.check().await {
+        Ok(Some(update)) => {
+            if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+                eprintln!("update download/install failed: {e}");
+                return;
+            }
+            app.restart();
+        }
+        Ok(None) => {}
+        Err(e) => eprintln!("update check failed: {e}"),
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -56,6 +85,8 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![AUTOSTART_ARG]),
         ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
@@ -101,6 +132,11 @@ pub fn run() {
             app.manage(sync_trigger);
             backup::spawn(db_path.clone());
 
+            // Silent update check on every launch (autostart or manual) — see
+            // check_for_update below. Errors (offline, no release yet, etc.)
+            // are swallowed: a failed check should never block startup.
+            tauri::async_runtime::spawn(check_for_update(app.handle().clone()));
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -135,6 +171,16 @@ pub fn run() {
             commands::get_preference,
             commands::set_preference,
             commands::list_preferences,
+            focus::start_focus_session,
+            focus::get_active_focus_session,
+            focus::pause_focus_session,
+            focus::resume_focus_session,
+            focus::complete_focus_phase,
+            focus::submit_reflection,
+            focus::end_break,
+            focus::abandon_focus_session,
+            focus::list_focus_sessions,
+            focus::delete_focus_session,
             google::commands::is_google_connected,
             google::commands::connect_google,
             google::commands::disconnect_google,

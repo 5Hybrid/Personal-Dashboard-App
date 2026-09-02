@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QueryBoundary } from "@/components/QueryBoundary";
 import { useCreateItem, useItems, useSoftDeleteItem, useUpdateItem } from "@/hooks/useItems";
 import type { ItemStatus, Priority } from "@/types";
@@ -74,15 +75,16 @@ function AddPersonalItemForm() {
       </label>
       <label className="text-xs">
         Priority
-        <select
-          className="block h-9 rounded-md border px-2 text-sm"
-          value={priority}
-          onChange={(e) => setPriority(e.target.value as Priority)}
-        >
-          <option>Low</option>
-          <option>Medium</option>
-          <option>High</option>
-        </select>
+        <Select value={priority} onValueChange={(v) => setPriority(v as Priority)}>
+          <SelectTrigger className="block w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Low">Low</SelectItem>
+            <SelectItem value="Medium">Medium</SelectItem>
+            <SelectItem value="High">High</SelectItem>
+          </SelectContent>
+        </Select>
       </label>
       <Button type="submit" disabled={createItem.isPending}>
         Add

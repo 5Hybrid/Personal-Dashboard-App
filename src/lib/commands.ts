@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Context,
   ContextInput,
+  FocusOutcome,
+  FocusSession,
   GoogleCalendarEvent,
   GoogleCalendarListEntry,
   GoogleTask,
@@ -18,6 +20,7 @@ import type {
   QuickNote,
   QuickNoteInput,
   RemoteBackupStatus,
+  StartFocusSessionInput,
   SyncConflict,
 } from "@/types";
 
@@ -54,6 +57,19 @@ export const commands = {
   getPreference: (key: string) => invoke<string | null>("get_preference", { key }),
   setPreference: (key: string, value: string) => invoke<void>("set_preference", { key, value }),
   listPreferences: () => invoke<[string, string][]>("list_preferences"),
+
+  startFocusSession: (input: StartFocusSessionInput) =>
+    invoke<FocusSession>("start_focus_session", { input }),
+  getActiveFocusSession: () => invoke<FocusSession | null>("get_active_focus_session"),
+  pauseFocusSession: (id: string) => invoke<FocusSession>("pause_focus_session", { id }),
+  resumeFocusSession: (id: string) => invoke<FocusSession>("resume_focus_session", { id }),
+  completeFocusPhase: (id: string) => invoke<FocusSession>("complete_focus_phase", { id }),
+  submitReflection: (id: string, outcome: FocusOutcome, note: string | null) =>
+    invoke<FocusSession>("submit_reflection", { id, outcome, note }),
+  endBreak: (id: string) => invoke<FocusSession>("end_break", { id }),
+  abandonFocusSession: (id: string) => invoke<FocusSession>("abandon_focus_session", { id }),
+  listFocusSessions: () => invoke<FocusSession[]>("list_focus_sessions"),
+  deleteFocusSession: (id: string) => invoke<void>("delete_focus_session", { id }),
 
   isGoogleConnected: () => invoke<boolean>("is_google_connected"),
   connectGoogle: () => invoke<void>("connect_google"),

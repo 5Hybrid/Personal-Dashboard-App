@@ -139,6 +139,8 @@ export interface GoogleCalendarEvent {
   status: string | null;
   start: GoogleEventDateTime | null;
   end: GoogleEventDateTime | null;
+  /** Google's per-event color override (fixed "1".."11" event palette id), null when the event just uses its calendar's default color. */
+  color_id: string | null;
 }
 
 export interface GoogleCalendarListEntry {
@@ -202,4 +204,37 @@ export interface ItemInput {
   assignment_type?: string | null;
   points_earned?: number | null;
   points_possible?: number | null;
+}
+
+export type FocusPhase = "focus" | "break";
+export type FocusSessionState = "active" | "closed";
+export type FocusOutcome = "completed" | "partial" | "not_completed" | "interrupted";
+
+export interface FocusSession {
+  id: string;
+  intent: string;
+  goal: string | null;
+  item_id: string | null;
+  category: string | null;
+  planned_duration_seconds: number | null;
+  break_duration_seconds: number;
+  phase: FocusPhase;
+  running_since: string | null;
+  accumulated_seconds: number;
+  started_at: string;
+  ended_at: string | null;
+  actual_duration_seconds: number | null;
+  session_state: FocusSessionState;
+  outcome: FocusOutcome | null;
+  reflection_note: string | null;
+  created_at: string;
+}
+
+export interface StartFocusSessionInput {
+  intent: string;
+  goal?: string | null;
+  item_id?: string | null;
+  category?: string | null;
+  planned_duration_seconds?: number | null;
+  break_duration_seconds: number;
 }

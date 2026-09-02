@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { QueryBoundary } from "@/components/QueryBoundary";
 import { useAutostartEnabled, useSetAutostart } from "@/hooks/useAutostart";
@@ -319,17 +320,21 @@ function NotificationPreferencesSection() {
             <p className="text-xs text-muted-foreground">Weekly reminder to plan the week ahead.</p>
           </div>
           <div className="flex items-center gap-2">
-            <select
-              className="h-9 rounded-md border px-2 text-sm"
+            <Select
               value={pref(prefs, "weekly_planning_day")}
-              onChange={(e) => setPreference.mutate({ key: "weekly_planning_day", value: e.target.value })}
+              onValueChange={(v) => setPreference.mutate({ key: "weekly_planning_day", value: v })}
             >
-              {WEEKDAY_LABELS.map((label, i) => (
-                <option key={label} value={i}>
-                  {label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WEEKDAY_LABELS.map((label, i) => (
+                  <SelectItem key={label} value={String(i)}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Input
               type="time"
               className="w-28"

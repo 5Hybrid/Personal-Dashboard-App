@@ -140,10 +140,7 @@ mod tests {
         // Shouldn't happen in practice (an item can only be matched to a remote
         // id after a push sets last_synced_at), but if it ever does, refuse to
         // guess rather than silently overwrite either side.
-        assert_eq!(
-            decide_pull_action(t(1), t(2), None),
-            PullDecision::Conflict
-        );
+        assert_eq!(decide_pull_action(t(1), t(2), None), PullDecision::Conflict);
     }
 }
 
@@ -171,11 +168,15 @@ fn set_pref(conn: &Connection, key: &str, value: &str) {
 }
 
 fn parse_rfc3339(s: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&Utc))
+    DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
 }
 
 fn non_deleted_items(conn: &Connection) -> Vec<Item> {
-    let mut stmt = match conn.prepare(&format!("SELECT {ITEM_COLUMNS} FROM item WHERE deleted_at IS NULL")) {
+    let mut stmt = match conn.prepare(&format!(
+        "SELECT {ITEM_COLUMNS} FROM item WHERE deleted_at IS NULL"
+    )) {
         Ok(s) => s,
         Err(_) => return Vec::new(),
     };
@@ -197,7 +198,12 @@ fn deleted_items_with_remote_ids(conn: &Connection) -> Vec<Item> {
         .unwrap_or_default()
 }
 
-fn record_conflict(conn: &Connection, item: &Item, source: &str, remote_snapshot: serde_json::Value) {
+fn record_conflict(
+    conn: &Connection,
+    item: &Item,
+    source: &str,
+    remote_snapshot: serde_json::Value,
+) {
     let local_snapshot = json!({
         "title": item.title,
         "due_date": item.due_date,
@@ -259,7 +265,10 @@ fn apply_remote_calendar_event(conn: &Connection, event: &CalendarEvent) {
     let Some(remote_updated_at) = event.updated.as_deref().and_then(parse_rfc3339) else {
         return;
     };
-    let last_synced_at = item.last_synced_at_calendar.as_deref().and_then(parse_rfc3339);
+    let last_synced_at = item
+        .last_synced_at_calendar
+        .as_deref()
+        .and_then(parse_rfc3339);
     let local_updated_at = match parse_rfc3339(&item.updated_at) {
         Some(t) => t,
         None => return,
@@ -417,7 +426,11 @@ fn push_items(conn: &Connection, access_token: &str) -> Result<(), String> {
         // other channel still needs (the mirror image of the pull-side bug
         // documented in db.rs / apply_remote_*).
         let needs_calendar_push = item.due_date.is_some()
-            && match item.last_synced_at_calendar.as_deref().and_then(parse_rfc3339) {
+            && match item
+                .last_synced_at_calendar
+                .as_deref()
+                .and_then(parse_rfc3339)
+            {
                 Some(ts) => local_updated_at > ts,
                 None => true,
             };
@@ -453,7 +466,10 @@ fn push_items(conn: &Connection, access_token: &str) -> Result<(), String> {
                         calendar_ok = true;
                     }
                     Err(e) => {
-                        eprintln!("[google sync] push calendar event failed for item {}: {e}", item.id);
+                        eprintln!(
+                            "[google sync] push calendar event failed for item {}: {e}",
+                            item.id
+                        );
                     }
                 }
             }
@@ -586,9 +602,7 @@ pub fn spawn(app: tauri::AppHandle, db_path: PathBuf) -> SyncTrigger {
             // interval. A closed channel (should only happen at app
             // shutdown) falls back to a plain sleep instead of busy-looping.
             match rx.recv_timeout(interval) {
-                Ok(()) | Err(mpsc::RecvTimeoutError::Timeout) => {
-                    while rx.try_recv().is_ok() {}
-                }
+                Ok(()) | Err(mpsc::RecvTimeoutError::Timeout) => while rx.try_recv().is_ok() {},
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     std::thread::sleep(interval);
                 }

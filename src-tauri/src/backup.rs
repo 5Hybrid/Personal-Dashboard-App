@@ -197,7 +197,9 @@ fn check_remote_backup_impl(local: &Connection, folder: &str) -> Option<RemoteBa
 }
 
 #[tauri::command]
-pub fn check_remote_backup(state: State<DbPathState>) -> Result<Option<RemoteBackupStatus>, String> {
+pub fn check_remote_backup(
+    state: State<DbPathState>,
+) -> Result<Option<RemoteBackupStatus>, String> {
     let local = crate::db::init(&state.0).map_err(|e| e.to_string())?;
     let folder = get_pref(&local, "backup_folder_path").unwrap_or_default();
     Ok(check_remote_backup_impl(&local, &folder))
@@ -381,7 +383,12 @@ mod tests {
         let last_activity_at = get_pref(&conn, "last_activity_at");
         assert!(last_activity_at.is_some());
         // With no backup yet at all, that alone should make a backup due.
-        assert!(is_backup_due(Utc::now(), None, parse_rfc3339(last_activity_at), 24));
+        assert!(is_backup_due(
+            Utc::now(),
+            None,
+            parse_rfc3339(last_activity_at),
+            24
+        ));
     }
 
     #[test]

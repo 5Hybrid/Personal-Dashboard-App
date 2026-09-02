@@ -33,8 +33,13 @@ fn snippet_around(text: &str, query: &str) -> String {
     let raw_end = (idx + query.len() + SNIPPET_RADIUS).min(text.len());
     // `text` may contain multi-byte UTF-8, so the radius offsets above can
     // land mid-character — nudge both ends out to the nearest char boundary.
-    let start = (0..=raw_start).rev().find(|&i| text.is_char_boundary(i)).unwrap_or(0);
-    let end = (raw_end..=text.len()).find(|&i| text.is_char_boundary(i)).unwrap_or(text.len());
+    let start = (0..=raw_start)
+        .rev()
+        .find(|&i| text.is_char_boundary(i))
+        .unwrap_or(0);
+    let end = (raw_end..=text.len())
+        .find(|&i| text.is_char_boundary(i))
+        .unwrap_or(text.len());
 
     let core = text[start..end].trim().replace('\n', " ");
     let prefix = if start > 0 { "…" } else { "" };
@@ -55,24 +60,35 @@ fn is_hidden_dir(name: &str) -> bool {
 /// `MAX_FILES_SCANNED` as a second guard against a misconfigured path
 /// (e.g. pointing the vault at a whole drive).
 fn walk_markdown_files(dir: &Path, out: &mut Vec<PathBuf>, scanned: &mut usize) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         if *scanned >= MAX_FILES_SCANNED {
             return;
         }
         *scanned += 1;
 
-        let Ok(file_type) = entry.file_type() else { continue };
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
         if file_type.is_symlink() {
             continue;
         }
         let path = entry.path();
         if file_type.is_dir() {
-            let hidden = path.file_name().and_then(|n| n.to_str()).is_some_and(is_hidden_dir);
+            let hidden = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(is_hidden_dir);
             if !hidden {
                 walk_markdown_files(&path, out, scanned);
             }
-        } else if path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("md")) {
+        } else if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("md"))
+        {
             out.push(path);
         }
     }
@@ -87,7 +103,8 @@ fn resolve_vault_root(vault_path: &str) -> Result<PathBuf, String> {
     if trimmed.is_empty() {
         return Err("No Obsidian vault folder configured".to_string());
     }
-    let canonical = std::fs::canonicalize(trimmed).map_err(|e| format!("Can't access vault folder: {e}"))?;
+    let canonical =
+        std::fs::canonicalize(trimmed).map_err(|e| format!("Can't access vault folder: {e}"))?;
     if !canonical.is_dir() {
         return Err("Vault path is not a folder".to_string());
     }
@@ -103,7 +120,10 @@ fn configured_vault_path(conn: &Connection) -> String {
 /// an unset vault just means this section of results is empty, same as an
 /// Item search with zero matches.
 #[tauri::command]
-pub fn search_obsidian_vault(state: State<DbState>, query: String) -> Result<Vec<ObsidianNote>, String> {
+pub fn search_obsidian_vault(
+    state: State<DbState>,
+    query: String,
+) -> Result<Vec<ObsidianNote>, String> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return Ok(Vec::new());
@@ -127,7 +147,9 @@ pub fn search_obsidian_vault(state: State<DbState>, query: String) -> Result<Vec
         if results.len() >= MAX_VAULT_RESULTS {
             break;
         }
-        let Ok(relative) = path.strip_prefix(&root) else { continue };
+        let Ok(relative) = path.strip_prefix(&root) else {
+            continue;
+        };
         let relative_str = relative.to_string_lossy().replace('\\', "/");
         let title = path
             .file_stem()
@@ -137,7 +159,9 @@ pub fn search_obsidian_vault(state: State<DbState>, query: String) -> Result<Vec
 
         let title_matches = title.to_lowercase().contains(&needle);
         let content = std::fs::read_to_string(&path).ok();
-        let content_matches = content.as_deref().is_some_and(|c| c.to_lowercase().contains(&needle));
+        let content_matches = content
+            .as_deref()
+            .is_some_and(|c| c.to_lowercase().contains(&needle));
         if !title_matches && !content_matches {
             continue;
         }
@@ -146,9 +170,17 @@ pub fn search_obsidian_vault(state: State<DbState>, query: String) -> Result<Vec
             .ok()
             .and_then(|m| m.modified().ok())
             .map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339());
-        let snippet = content.as_deref().filter(|_| content_matches).map(|c| snippet_around(c, trimmed));
+        let snippet = content
+            .as_deref()
+            .filter(|_| content_matches)
+            .map(|c| snippet_around(c, trimmed));
 
-        results.push(ObsidianNote { path: relative_str, title, snippet, modified });
+        results.push(ObsidianNote {
+            path: relative_str,
+            title,
+            snippet,
+            modified,
+        });
     }
     Ok(results)
 }
@@ -166,7 +198,8 @@ pub fn read_obsidian_note(state: State<DbState>, relative_path: String) -> Resul
     };
     let root = resolve_vault_root(&vault_path)?;
     let candidate = root.join(&relative_path);
-    let resolved = std::fs::canonicalize(&candidate).map_err(|e| format!("Can't read note: {e}"))?;
+    let resolved =
+        std::fs::canonicalize(&candidate).map_err(|e| format!("Can't read note: {e}"))?;
     if !resolved.starts_with(&root) {
         return Err("Note path is outside the configured vault".to_string());
     }
@@ -180,10 +213,20 @@ pub fn read_obsidian_note(state: State<DbState>, relative_path: String) -> Resul
 pub fn test_obsidian_vault(path: String) -> Result<ObsidianVaultStatus, String> {
     let root = match resolve_vault_root(&path) {
         Ok(root) => root,
-        Err(error) => return Ok(ObsidianVaultStatus { valid: false, note_count: 0, error: Some(error) }),
+        Err(error) => {
+            return Ok(ObsidianVaultStatus {
+                valid: false,
+                note_count: 0,
+                error: Some(error),
+            })
+        }
     };
     let mut files = Vec::new();
     let mut scanned = 0usize;
     walk_markdown_files(&root, &mut files, &mut scanned);
-    Ok(ObsidianVaultStatus { valid: true, note_count: files.len(), error: None })
+    Ok(ObsidianVaultStatus {
+        valid: true,
+        note_count: files.len(),
+        error: None,
+    })
 }

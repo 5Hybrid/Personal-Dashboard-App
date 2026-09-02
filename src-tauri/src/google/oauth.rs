@@ -1,4 +1,7 @@
-use super::config::{GOOGLE_AUTH_ENDPOINT, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_SCOPES, GOOGLE_TOKEN_ENDPOINT};
+use super::config::{
+    GOOGLE_AUTH_ENDPOINT, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_SCOPES,
+    GOOGLE_TOKEN_ENDPOINT,
+};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rand::Rng;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -30,7 +33,10 @@ fn clear_pref(conn: &Connection, key: &str) {
 }
 
 fn now_unix() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }
 
 fn random_url_safe_string(len: usize) -> String {
@@ -122,9 +128,11 @@ pub fn run_installed_app_flow() -> Result<TokenResult, String> {
     let parsed = url::Url::parse(&full_url).map_err(|e| e.to_string())?;
     let params: std::collections::HashMap<_, _> = parsed.query_pairs().into_owned().collect();
 
-    let response_body = "<html><body>You can close this window and return to Life OS.</body></html>";
-    let response = tiny_http::Response::from_string(response_body)
-        .with_header(tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html"[..]).unwrap());
+    let response_body =
+        "<html><body>You can close this window and return to Life OS.</body></html>";
+    let response = tiny_http::Response::from_string(response_body).with_header(
+        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html"[..]).unwrap(),
+    );
     let _ = request.respond(response);
 
     if let Some(err) = params.get("error") {
