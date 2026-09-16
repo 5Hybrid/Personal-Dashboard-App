@@ -7,6 +7,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 use uuid::Uuid;
@@ -14,20 +15,41 @@ use uuid::Uuid;
 const SYNC_INTERVAL_FLOOR: Duration = Duration::from_secs(30);
 
 /// Lets any Tauri command (e.g. a delete) wake the background sync loop
-/// immediately instead of waiting out the rest of its sleep interval.
-/// `mpsc::Sender` isn't `Sync`, so it's wrapped in a `Mutex` to satisfy
-/// Tauri's managed-state bound; sending is still effectively a fire-and-forget
-/// signal, not a lock held across any real work.
-pub struct SyncTrigger(Mutex<mpsc::Sender<()>>);
+/// immediately instead of waiting out the rest of its sleep interval, and
+/// lets the `sync_now` command run a sync inline without racing the
+/// background loop's own tick.
+///
+/// `run_lock` is what actually prevents duplicates: `push_items` reads an
+/// item's `google_calendar_id`/`google_task_id`, makes a network call, and
+/// only then writes the id back. If two `run_sync` calls (the periodic loop
+/// tick and a manually-triggered "Sync Now", or two overlapping trigger
+/// wakes) interleaved during that window, both would see the id as unset and
+/// each create their own Google Calendar event / Task for the same item —
+/// the second write would just clobber the first id in SQLite, leaving an
+/// orphaned duplicate on the Google side that the app can no longer see.
+/// Serializing every `run_sync` call through this lock closes that window.
+pub struct SyncTrigger {
+    tx: Mutex<mpsc::Sender<()>>,
+    run_lock: Arc<Mutex<()>>,
+}
 
 impl SyncTrigger {
     /// Best-effort: if the sync thread has somehow gone away, there's no
     /// meaningful error to surface to the caller (a delete succeeded either
     /// way — this only affects how soon it reaches Google).
     pub fn notify(&self) {
-        if let Ok(tx) = self.0.lock() {
+        if let Ok(tx) = self.tx.lock() {
             let _ = tx.send(());
         }
+    }
+
+    /// Runs `run_sync` under the same lock the background loop uses, so this
+    /// call and any in-progress (or about-to-start) background tick can never
+    /// execute concurrently. Use this instead of calling `run_sync` directly
+    /// from a command.
+    pub fn run_sync_exclusive(&self, conn: &Connection) -> Result<(), String> {
+        let _guard = self.run_lock.lock().unwrap_or_else(|e| e.into_inner());
+        run_sync(conn)
     }
 }
 
@@ -567,6 +589,8 @@ pub fn run_sync(conn: &Connection) -> Result<(), String> {
 /// the remote event/task doesn't sit orphaned for a full interval).
 pub fn spawn(app: tauri::AppHandle, db_path: PathBuf) -> SyncTrigger {
     let (tx, rx) = mpsc::channel::<()>();
+    let run_lock = Arc::new(Mutex::new(()));
+    let thread_run_lock = Arc::clone(&run_lock);
     std::thread::spawn(move || {
         let conn = match crate::db::init(&db_path) {
             Ok(c) => c,
@@ -581,7 +605,15 @@ pub fn spawn(app: tauri::AppHandle, db_path: PathBuf) -> SyncTrigger {
             // What it can't do on its own is tell the user *why* sync
             // stopped, since nothing else is watching this background
             // thread — that's what the notification is for.
-            if let Err(e) = run_sync(&conn) {
+            //
+            // Held for the whole call (not just around individual DB
+            // statements) so a concurrent `sync_now` can't interleave its own
+            // read-network-write cycle with this one — see SyncTrigger's docs.
+            let sync_result = {
+                let _guard = thread_run_lock.lock().unwrap_or_else(|e| e.into_inner());
+                run_sync(&conn)
+            };
+            if let Err(e) = sync_result {
                 if e == oauth::RECONNECT_REQUIRED {
                     crate::notifications::notify(
                         &app,
@@ -609,5 +641,8 @@ pub fn spawn(app: tauri::AppHandle, db_path: PathBuf) -> SyncTrigger {
             }
         }
     });
-    SyncTrigger(Mutex::new(tx))
+    SyncTrigger {
+        tx: Mutex::new(tx),
+        run_lock,
+    }
 }

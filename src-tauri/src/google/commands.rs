@@ -77,10 +77,15 @@ pub fn disconnect_google(state: State<DbPathState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Routed through `SyncTrigger::run_sync_exclusive` rather than calling
+/// `sync::run_sync` directly — see that method's docs for why: without it,
+/// this could interleave with the background loop's own tick and both would
+/// end up pushing the same not-yet-linked item, creating a duplicate Google
+/// Calendar event or Task.
 #[tauri::command]
-pub fn sync_now(state: State<DbPathState>) -> Result<(), String> {
+pub fn sync_now(state: State<DbPathState>, sync_trigger: State<sync::SyncTrigger>) -> Result<(), String> {
     let conn = open_conn(&state)?;
-    sync::run_sync(&conn)
+    sync_trigger.run_sync_exclusive(&conn)
 }
 
 #[tauri::command]
