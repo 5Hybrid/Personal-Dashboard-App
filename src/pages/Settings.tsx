@@ -15,7 +15,7 @@ import {
   useGoogleConnected,
   useSyncNow,
 } from "@/hooks/useGoogle";
-import { useTestObsidianVault } from "@/hooks/useObsidianVault";
+import { useScanObsidianTasks, useTestObsidianVault } from "@/hooks/useObsidianVault";
 import { useBackupNow, usePreferences, useSetPreference, useSyncFromBackup } from "@/hooks/usePreferences";
 import { useTheme } from "@/hooks/useTheme";
 import { parseSelectedCalendarIds, SELECTED_CALENDARS_PREF_KEY } from "@/lib/googleCalendarSelection";
@@ -550,6 +550,104 @@ function ObsidianVaultSection() {
   );
 }
 
+function ObsidianTaskScannerSection() {
+  const { data: prefs } = usePreferences();
+  const setPreference = useSetPreference();
+  const scanTasks = useScanObsidianTasks();
+  const [localFolder, setLocalFolder] = useState<string | null>(null);
+
+  const vaultPath = pref(prefs, "obsidian_vault_path");
+  const scanFolder = localFolder ?? pref(prefs, "obsidian_scan_folder");
+  const lastScanAt = prefs?.["obsidian_scan_last_at"];
+  const lastSummary = useMemo(() => {
+    const raw = prefs?.["obsidian_scan_last_summary"];
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as {
+        files_scanned: number;
+        actionable_sections_found: number;
+        tasks_found: number;
+        new_tasks: number;
+        existing_tasks: number;
+        completed_source_tasks: number;
+        errors: string[];
+        error: string | null;
+      };
+    } catch {
+      return null;
+    }
+  }, [prefs]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Obsidian Task Scanner</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Scans Markdown files in one folder of your Obsidian vault for <code>## Next Steps</code> and{" "}
+          <code>## Action Items</code> sections and imports their unchecked <code>- [ ]</code> checkboxes as
+          dashboard tasks. Purely deterministic — no AI, no interpretation of prose. Re-scanning never creates
+          duplicates, and checking a box in Obsidian marks the matching dashboard task Completed.
+        </p>
+
+        <div>
+          <Label>Vault</Label>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {vaultPath || "Not configured — set it in Obsidian Vault above first."}
+          </p>
+        </div>
+
+        <div>
+          <Label>Scan folder</Label>
+          <p className="mb-1 text-xs text-muted-foreground">Relative to the vault above, e.g. s3-Fall26.</p>
+          <Input
+            className="w-56"
+            value={scanFolder}
+            onChange={(e) => setLocalFolder(e.target.value)}
+            onBlur={() => {
+              setPreference.mutate({ key: "obsidian_scan_folder", value: scanFolder });
+              setLocalFolder(null);
+            }}
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button onClick={() => scanTasks.mutate()} disabled={scanTasks.isPending || !vaultPath.trim()}>
+            {scanTasks.isPending ? "Scanning…" : "Scan Now"}
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {lastScanAt ? `Last scanned: ${new Date(lastScanAt).toLocaleString()}` : "Never scanned"}
+          </span>
+        </div>
+
+        {scanTasks.isError && <p className="text-sm text-destructive">{String(scanTasks.error)}</p>}
+
+        {lastSummary?.error && <p className="text-sm text-destructive">{lastSummary.error}</p>}
+
+        {lastSummary && !lastSummary.error && (
+          <div className="rounded-md border p-3 text-xs text-muted-foreground">
+            <div>Files scanned: {lastSummary.files_scanned}</div>
+            <div>Actionable sections found: {lastSummary.actionable_sections_found}</div>
+            <div>Tasks found: {lastSummary.tasks_found}</div>
+            <div>New tasks: {lastSummary.new_tasks}</div>
+            <div>Existing tasks: {lastSummary.existing_tasks}</div>
+            <div>Completed source tasks: {lastSummary.completed_source_tasks}</div>
+            <div>Errors: {lastSummary.errors.length}</div>
+            {lastSummary.errors.length > 0 && (
+              <ul className="mt-1 list-disc pl-4">
+                {lastSummary.errors.map((err) => (
+                  <li key={err}>{err}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ThemeSection() {
   const { theme, setTheme } = useTheme();
 
@@ -620,6 +718,7 @@ export default function Settings() {
       <SyncIntervalSection />
       <BackupSection />
       <ObsidianVaultSection />
+      <ObsidianTaskScannerSection />
       <AutostartSection />
       <ThemeSection />
     </div>

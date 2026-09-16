@@ -87,6 +87,11 @@ pub(crate) fn row_to_item(row: &Row) -> rusqlite::Result<Item> {
         assignment_type: row.get("assignment_type")?,
         points_earned: row.get("points_earned")?,
         points_possible: row.get("points_possible")?,
+        obsidian_source_id: row.get("obsidian_source_id")?,
+        obsidian_vault_path: row.get("obsidian_vault_path")?,
+        obsidian_source_folder: row.get("obsidian_source_folder")?,
+        obsidian_source_file: row.get("obsidian_source_file")?,
+        obsidian_source_section: row.get("obsidian_source_section")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
         deleted_at: row.get("deleted_at")?,
@@ -99,7 +104,103 @@ const CONTEXT_COLUMNS: &str =
 pub(crate) const ITEM_COLUMNS: &str = "id, title, description, category, subcategory_id, subcategory_text, \
     due_date, due_time, estimated_duration, priority, status, repeat_settings, color, notes, \
     tags, attachments, google_calendar_id, google_task_id, last_synced_at_calendar, last_synced_at_tasks, \
-    assignment_type, points_earned, points_possible, created_at, updated_at, deleted_at";
+    assignment_type, points_earned, points_possible, \
+    obsidian_source_id, obsidian_vault_path, obsidian_source_folder, obsidian_source_file, obsidian_source_section, \
+    created_at, updated_at, deleted_at";
+
+/// Shared by `create_item` and the Obsidian scanner (obsidian_tasks.rs) —
+/// anywhere a fully-formed `Item` needs its first row written, so the two
+/// call sites can't drift on column order or count.
+pub(crate) fn insert_item_row(conn: &Connection, item: &Item) -> rusqlite::Result<()> {
+    conn.execute(
+        &format!(
+            "INSERT INTO item ({ITEM_COLUMNS}) VALUES \
+             (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31)"
+        ),
+        params![
+            item.id,
+            item.title,
+            item.description,
+            item.category,
+            item.subcategory_id,
+            item.subcategory_text,
+            item.due_date,
+            item.due_time,
+            item.estimated_duration,
+            item.priority,
+            item.status,
+            item.repeat_settings,
+            item.color,
+            item.notes,
+            vec_to_text(&item.tags),
+            vec_to_text(&item.attachments),
+            item.google_calendar_id,
+            item.google_task_id,
+            item.last_synced_at_calendar,
+            item.last_synced_at_tasks,
+            item.assignment_type,
+            item.points_earned,
+            item.points_possible,
+            item.obsidian_source_id,
+            item.obsidian_vault_path,
+            item.obsidian_source_folder,
+            item.obsidian_source_file,
+            item.obsidian_source_section,
+            item.created_at,
+            item.updated_at,
+            item.deleted_at,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Shared by `update_item` — anywhere a fully-formed `Item` needs its row
+/// updated wholesale (updated_at must already be set by the caller).
+pub(crate) fn update_item_row(conn: &Connection, item: &Item) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE item SET title=?2, description=?3, category=?4, subcategory_id=?5, \
+         subcategory_text=?6, due_date=?7, due_time=?8, estimated_duration=?9, priority=?10, \
+         status=?11, repeat_settings=?12, color=?13, notes=?14, tags=?15, attachments=?16, \
+         google_calendar_id=?17, google_task_id=?18, last_synced_at_calendar=?19, last_synced_at_tasks=?20, \
+         assignment_type=?21, points_earned=?22, points_possible=?23, \
+         obsidian_source_id=?24, obsidian_vault_path=?25, obsidian_source_folder=?26, \
+         obsidian_source_file=?27, obsidian_source_section=?28, \
+         updated_at=?29, deleted_at=?30 WHERE id=?1",
+        params![
+            item.id,
+            item.title,
+            item.description,
+            item.category,
+            item.subcategory_id,
+            item.subcategory_text,
+            item.due_date,
+            item.due_time,
+            item.estimated_duration,
+            item.priority,
+            item.status,
+            item.repeat_settings,
+            item.color,
+            item.notes,
+            vec_to_text(&item.tags),
+            vec_to_text(&item.attachments),
+            item.google_calendar_id,
+            item.google_task_id,
+            item.last_synced_at_calendar,
+            item.last_synced_at_tasks,
+            item.assignment_type,
+            item.points_earned,
+            item.points_possible,
+            item.obsidian_source_id,
+            item.obsidian_vault_path,
+            item.obsidian_source_folder,
+            item.obsidian_source_file,
+            item.obsidian_source_section,
+            item.updated_at,
+            item.deleted_at,
+        ],
+    )?;
+    Ok(())
+}
 
 #[tauri::command]
 pub fn create_context(state: State<DbState>, input: ContextInput) -> Result<Context, String> {
@@ -203,45 +304,16 @@ pub fn create_item(state: State<DbState>, input: ItemInput) -> Result<Item, Stri
         assignment_type: input.assignment_type,
         points_earned: input.points_earned,
         points_possible: input.points_possible,
+        obsidian_source_id: None,
+        obsidian_vault_path: None,
+        obsidian_source_folder: None,
+        obsidian_source_file: None,
+        obsidian_source_section: None,
         created_at: timestamp.clone(),
         updated_at: timestamp,
         deleted_at: None,
     };
-    conn.execute(
-        &format!(
-            "INSERT INTO item ({ITEM_COLUMNS}) VALUES \
-             (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26)"
-        ),
-        params![
-            item.id,
-            item.title,
-            item.description,
-            item.category,
-            item.subcategory_id,
-            item.subcategory_text,
-            item.due_date,
-            item.due_time,
-            item.estimated_duration,
-            item.priority,
-            item.status,
-            item.repeat_settings,
-            item.color,
-            item.notes,
-            vec_to_text(&item.tags),
-            vec_to_text(&item.attachments),
-            item.google_calendar_id,
-            item.google_task_id,
-            item.last_synced_at_calendar,
-            item.last_synced_at_tasks,
-            item.assignment_type,
-            item.points_earned,
-            item.points_possible,
-            item.created_at,
-            item.updated_at,
-            item.deleted_at,
-        ],
-    )
-    .map_err(|e| e.to_string())?;
+    insert_item_row(&conn, &item).map_err(|e| e.to_string())?;
     touch_activity(&conn);
     Ok(item)
 }
@@ -250,41 +322,7 @@ pub fn create_item(state: State<DbState>, input: ItemInput) -> Result<Item, Stri
 pub fn update_item(state: State<DbState>, mut item: Item) -> Result<Item, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     item.updated_at = now();
-    conn.execute(
-        "UPDATE item SET title=?2, description=?3, category=?4, subcategory_id=?5, \
-         subcategory_text=?6, due_date=?7, due_time=?8, estimated_duration=?9, priority=?10, \
-         status=?11, repeat_settings=?12, color=?13, notes=?14, tags=?15, attachments=?16, \
-         google_calendar_id=?17, google_task_id=?18, last_synced_at_calendar=?19, last_synced_at_tasks=?20, \
-         assignment_type=?21, points_earned=?22, points_possible=?23, updated_at=?24, deleted_at=?25 WHERE id=?1",
-        params![
-            item.id,
-            item.title,
-            item.description,
-            item.category,
-            item.subcategory_id,
-            item.subcategory_text,
-            item.due_date,
-            item.due_time,
-            item.estimated_duration,
-            item.priority,
-            item.status,
-            item.repeat_settings,
-            item.color,
-            item.notes,
-            vec_to_text(&item.tags),
-            vec_to_text(&item.attachments),
-            item.google_calendar_id,
-            item.google_task_id,
-            item.last_synced_at_calendar,
-            item.last_synced_at_tasks,
-            item.assignment_type,
-            item.points_earned,
-            item.points_possible,
-            item.updated_at,
-            item.deleted_at,
-        ],
-    )
-    .map_err(|e| e.to_string())?;
+    update_item_row(&conn, &item).map_err(|e| e.to_string())?;
     touch_activity(&conn);
     Ok(item)
 }

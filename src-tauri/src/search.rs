@@ -59,7 +59,7 @@ fn is_hidden_dir(name: &str) -> bool {
 /// into an infinite loop, and caps total entries visited at
 /// `MAX_FILES_SCANNED` as a second guard against a misconfigured path
 /// (e.g. pointing the vault at a whole drive).
-fn walk_markdown_files(dir: &Path, out: &mut Vec<PathBuf>, scanned: &mut usize) {
+pub(crate) fn walk_markdown_files(dir: &Path, out: &mut Vec<PathBuf>, scanned: &mut usize) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -98,7 +98,7 @@ fn walk_markdown_files(dir: &Path, out: &mut Vec<PathBuf>, scanned: &mut usize) 
 /// just checking `is_dir`) is what makes the containment check in
 /// `read_obsidian_note` sound — it resolves `..` segments and symlinks up
 /// front so a later prefix comparison can't be fooled by them.
-fn resolve_vault_root(vault_path: &str) -> Result<PathBuf, String> {
+pub(crate) fn resolve_vault_root(vault_path: &str) -> Result<PathBuf, String> {
     let trimmed = vault_path.trim();
     if trimmed.is_empty() {
         return Err("No Obsidian vault folder configured".to_string());

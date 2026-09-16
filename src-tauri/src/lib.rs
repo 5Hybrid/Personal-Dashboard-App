@@ -6,6 +6,7 @@ mod focus;
 mod google;
 mod models;
 mod notifications;
+mod obsidian_tasks;
 mod search;
 
 use std::sync::Mutex;
@@ -203,6 +204,7 @@ pub fn run() {
             search::search_obsidian_vault,
             search::read_obsidian_note,
             search::test_obsidian_vault,
+            obsidian_tasks::scan_obsidian_tasks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

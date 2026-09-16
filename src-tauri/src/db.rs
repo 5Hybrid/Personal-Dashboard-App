@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS item (
   points_earned REAL,
   points_possible REAL,
 
+  -- Set only for Items created by the Obsidian task scanner (obsidian_tasks.rs)
+  -- — NULL for everything created directly in the dashboard or from Google.
+  -- obsidian_source_id is a deterministic hash of (vault-relative file,
+  -- section, task text, occurrence index) so the same source checkbox always
+  -- resolves to the same Item and re-scanning can never create a duplicate;
+  -- the UNIQUE index below is a DB-level backstop for that guarantee.
+  obsidian_source_id TEXT,
+  obsidian_vault_path TEXT,
+  obsidian_source_folder TEXT,
+  obsidian_source_file TEXT,
+  obsidian_source_section TEXT,
+
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   deleted_at TEXT
@@ -196,6 +208,7 @@ pub fn init(db_path: &Path) -> rusqlite::Result<Connection> {
     conn.execute_batch(SCHEMA)?;
     migrate_split_last_synced_at(&conn)?;
     migrate_regenerate_device_id(&conn)?;
+    migrate_add_obsidian_source_columns(&conn)?;
     Ok(conn)
 }
 
@@ -246,6 +259,31 @@ fn migrate_regenerate_device_id(conn: &Connection) -> rusqlite::Result<()> {
         [],
     )?;
     Ok(())
+}
+
+/// One-time migration adding the Obsidian source-tracking columns to `item`
+/// for DBs created before the Obsidian task scanner existed. `CREATE TABLE IF
+/// NOT EXISTS` (in SCHEMA) only helps brand-new databases — an existing
+/// `item` table needs these columns added explicitly. Safe to run on every
+/// startup: skips the `ALTER TABLE`s once the column exists, and the index
+/// creation is separately idempotent (`IF NOT EXISTS`) either way.
+fn migrate_add_obsidian_source_columns(conn: &Connection) -> rusqlite::Result<()> {
+    let has_column: bool = conn
+        .prepare("SELECT 1 FROM pragma_table_info('item') WHERE name = 'obsidian_source_id'")?
+        .exists([])?;
+    if !has_column {
+        conn.execute_batch(
+            "ALTER TABLE item ADD COLUMN obsidian_source_id TEXT;
+             ALTER TABLE item ADD COLUMN obsidian_vault_path TEXT;
+             ALTER TABLE item ADD COLUMN obsidian_source_folder TEXT;
+             ALTER TABLE item ADD COLUMN obsidian_source_file TEXT;
+             ALTER TABLE item ADD COLUMN obsidian_source_section TEXT;",
+        )?;
+    }
+    conn.execute_batch(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_item_obsidian_source_id \
+         ON item(obsidian_source_id) WHERE obsidian_source_id IS NOT NULL;",
+    )
 }
 
 #[cfg(test)]

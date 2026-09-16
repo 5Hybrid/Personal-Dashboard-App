@@ -58,6 +58,15 @@ pub struct Item {
     pub points_earned: Option<f64>,
     pub points_possible: Option<f64>,
 
+    /// Non-null only for Items created by the Obsidian task scanner (see
+    /// obsidian_tasks.rs) — mirrors the google_calendar_id/google_task_id
+    /// pattern above, but for a note-based source instead of a synced one.
+    pub obsidian_source_id: Option<String>,
+    pub obsidian_vault_path: Option<String>,
+    pub obsidian_source_folder: Option<String>,
+    pub obsidian_source_file: Option<String>,
+    pub obsidian_source_section: Option<String>,
+
     pub created_at: String,
     pub updated_at: String,
     pub deleted_at: Option<String>,
@@ -142,6 +151,30 @@ pub struct ObsidianNote {
 pub struct ObsidianVaultStatus {
     pub valid: bool,
     pub note_count: usize,
+    pub error: Option<String>,
+}
+
+/// Result of one `scan_obsidian_tasks` run (obsidian_tasks.rs). `error` is
+/// set only for a scan that couldn't start at all (vault/folder unreachable —
+/// every count stays 0); `errors` collects individual file-level failures
+/// from a scan that otherwise proceeded, so one bad file never aborts the rest.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ObsidianScanSummary {
+    pub vault_path: Option<String>,
+    pub scan_folder: String,
+    pub scanned_at: String,
+    pub files_scanned: usize,
+    pub actionable_sections_found: usize,
+    /// Unchecked ("- [ ]") checkbox tasks encountered — new_tasks + existing_tasks.
+    pub tasks_found: usize,
+    pub new_tasks: usize,
+    pub existing_tasks: usize,
+    /// Checked ("- [x]") checkbox items encountered — counted separately;
+    /// never contributes to tasks_found/new_tasks (see Phase 4/8 of the build spec).
+    pub completed_source_tasks: usize,
+    pub errors: Vec<String>,
+    /// Set only when the scan couldn't run at all (e.g. vault or configured
+    /// folder unreachable) — distinct from per-file `errors`.
     pub error: Option<String>,
 }
 

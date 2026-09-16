@@ -14,6 +14,7 @@ import type {
   Note,
   NoteInput,
   ObsidianNote,
+  ObsidianScanSummary,
   ObsidianVaultStatus,
   PersonalRecord,
   PersonalRecordInput,
@@ -103,4 +104,5 @@ export const commands = {
   readObsidianNote: (relativePath: string) =>
     invoke<string>("read_obsidian_note", { relativePath }),
   testObsidianVault: (path: string) => invoke<ObsidianVaultStatus>("test_obsidian_vault", { path }),
+  scanObsidianTasks: () => invoke<ObsidianScanSummary>("scan_obsidian_tasks"),
 };

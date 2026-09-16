@@ -18,6 +18,7 @@ export const NOTIFICATION_DEFAULTS = {
   backup_folder_path: "",
   backup_interval_hours: "24",
   obsidian_vault_path: "",
+  obsidian_scan_folder: "s3-Fall26",
   weather_location: "Calgary, AB",
   user_name: "Nathan",
 } as const;

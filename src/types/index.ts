@@ -68,6 +68,12 @@ export interface Item {
   points_earned: number | null;
   points_possible: number | null;
 
+  obsidian_source_id: string | null;
+  obsidian_vault_path: string | null;
+  obsidian_source_folder: string | null;
+  obsidian_source_file: string | null;
+  obsidian_source_section: string | null;
+
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -182,6 +188,20 @@ export interface ObsidianNote {
 export interface ObsidianVaultStatus {
   valid: boolean;
   note_count: number;
+  error: string | null;
+}
+
+export interface ObsidianScanSummary {
+  vault_path: string | null;
+  scan_folder: string;
+  scanned_at: string;
+  files_scanned: number;
+  actionable_sections_found: number;
+  tasks_found: number;
+  new_tasks: number;
+  existing_tasks: number;
+  completed_source_tasks: number;
+  errors: string[];
   error: string | null;
 }
 
