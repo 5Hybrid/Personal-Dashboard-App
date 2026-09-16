@@ -4,17 +4,21 @@ import type { Category } from "@/types";
 // (Master List, Dashboard widgets) — decorative badges, not chart data marks,
 // so a fixed, deliberately-chosen order matters more here than CVD-grade hue
 // separation (the category name is always shown alongside the color).
+// Dark variants sit on the 900 shade (not 950) at higher opacity — against
+// this app's near-black dark background (oklch L≈0.145) a 950-shade badge
+// fill blends back to almost nothing, leaving just text with no visible
+// pill. See the equivalent note on NOT_STARTED_ROW_CLASS in classColors.ts.
 export const CATEGORY_COLORS: Record<Category, string> = {
-  School: "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300",
-  Work: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
-  Gym: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
-  Personal: "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300",
-  Finance: "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300",
-  Projects: "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300",
-  Relationships: "bg-pink-100 text-pink-700 dark:bg-pink-950/50 dark:text-pink-300",
-  Health: "bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300",
-  Travel: "bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300",
-  Custom: "bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300",
+  School: "bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-200",
+  Work: "bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-200",
+  Gym: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200",
+  Personal: "bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-200",
+  Finance: "bg-rose-100 text-rose-700 dark:bg-rose-900/60 dark:text-rose-200",
+  Projects: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/60 dark:text-cyan-200",
+  Relationships: "bg-pink-100 text-pink-700 dark:bg-pink-900/60 dark:text-pink-200",
+  Health: "bg-teal-100 text-teal-700 dark:bg-teal-900/60 dark:text-teal-200",
+  Travel: "bg-orange-100 text-orange-700 dark:bg-orange-900/60 dark:text-orange-200",
+  Custom: "bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-200",
 };
 
 // A solid dot/border reads better than a full CATEGORY_COLORS pill at small

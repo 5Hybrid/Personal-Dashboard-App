@@ -38,32 +38,39 @@ export const CLASS_COLOR_SWATCH_CLASS: Record<ClassColorKey, string> = {
   pink: "bg-pink-300",
 };
 
-// "Not Started" — the full class theme.
+// "Not Started" — the full class theme. Dark variants sit on the 900 shade
+// (not 950 — against the app's near-black dark background, oklch L≈0.145,
+// a 950-shade tint at any reasonable opacity blends back to within a hair
+// of the page background and reads as no color at all) at high-ish opacity
+// so the hue stays clearly identifiable.
 const NOT_STARTED_ROW_CLASS: Record<ClassColorKey, string> = {
-  rose: "bg-rose-100 dark:bg-rose-950/40",
-  orange: "bg-orange-100 dark:bg-orange-950/40",
-  amber: "bg-amber-100 dark:bg-amber-950/40",
-  lime: "bg-lime-100 dark:bg-lime-950/40",
-  emerald: "bg-emerald-100 dark:bg-emerald-950/40",
-  teal: "bg-teal-100 dark:bg-teal-950/40",
-  cyan: "bg-cyan-100 dark:bg-cyan-950/40",
-  blue: "bg-blue-100 dark:bg-blue-950/40",
-  violet: "bg-violet-100 dark:bg-violet-950/40",
-  pink: "bg-pink-100 dark:bg-pink-950/40",
+  rose: "bg-rose-100 dark:bg-rose-900/70",
+  orange: "bg-orange-100 dark:bg-orange-900/70",
+  amber: "bg-amber-100 dark:bg-amber-900/70",
+  lime: "bg-lime-100 dark:bg-lime-900/70",
+  emerald: "bg-emerald-100 dark:bg-emerald-900/70",
+  teal: "bg-teal-100 dark:bg-teal-900/70",
+  cyan: "bg-cyan-100 dark:bg-cyan-900/70",
+  blue: "bg-blue-100 dark:bg-blue-900/70",
+  violet: "bg-violet-100 dark:bg-violet-900/70",
+  pink: "bg-pink-100 dark:bg-pink-900/70",
 };
 
-// "In Progress" — a visibly lighter tint of the same theme.
+// "In Progress" — a visibly lighter tint of the same theme. Still on the
+// 900 shade (see NOT_STARTED_ROW_CLASS) but at roughly half the opacity so
+// it stays legibly weaker than Not Started while remaining distinguishable
+// from the plain background.
 const IN_PROGRESS_ROW_CLASS: Record<ClassColorKey, string> = {
-  rose: "bg-rose-50 dark:bg-rose-950/15",
-  orange: "bg-orange-50 dark:bg-orange-950/15",
-  amber: "bg-amber-50 dark:bg-amber-950/15",
-  lime: "bg-lime-50 dark:bg-lime-950/15",
-  emerald: "bg-emerald-50 dark:bg-emerald-950/15",
-  teal: "bg-teal-50 dark:bg-teal-950/15",
-  cyan: "bg-cyan-50 dark:bg-cyan-950/15",
-  blue: "bg-blue-50 dark:bg-blue-950/15",
-  violet: "bg-violet-50 dark:bg-violet-950/15",
-  pink: "bg-pink-50 dark:bg-pink-950/15",
+  rose: "bg-rose-50 dark:bg-rose-900/35",
+  orange: "bg-orange-50 dark:bg-orange-900/35",
+  amber: "bg-amber-50 dark:bg-amber-900/35",
+  lime: "bg-lime-50 dark:bg-lime-900/35",
+  emerald: "bg-emerald-50 dark:bg-emerald-900/35",
+  teal: "bg-teal-50 dark:bg-teal-900/35",
+  cyan: "bg-cyan-50 dark:bg-cyan-900/35",
+  blue: "bg-blue-50 dark:bg-blue-900/35",
+  violet: "bg-violet-50 dark:bg-violet-900/35",
+  pink: "bg-pink-50 dark:bg-pink-900/35",
 };
 
 // "Completed" — always gray, regardless of the class's theme, per spec.

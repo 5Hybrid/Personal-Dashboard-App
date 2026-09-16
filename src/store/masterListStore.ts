@@ -12,7 +12,7 @@ interface MasterListState {
 }
 
 export const useMasterListStore = create<MasterListState>((set) => ({
-  activeViewId: null,
+  activeViewId: "school-only",
   search: "",
   groupBy: "none",
   setActiveView: (id) =>

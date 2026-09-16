@@ -33,7 +33,7 @@ export default function MasterList() {
   const updateItem = useUpdateItem();
   const { activeViewId, search, groupBy, setActiveView, setSearch, setGroupBy } =
     useMasterListStore();
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: "due_date", desc: false }]);
 
   const contextNameById = useMemo(() => {
     const map = new Map<string, string>();
