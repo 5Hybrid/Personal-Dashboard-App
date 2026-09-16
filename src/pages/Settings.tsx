@@ -17,9 +17,11 @@ import {
 } from "@/hooks/useGoogle";
 import { useScanObsidianTasks, useTestObsidianVault } from "@/hooks/useObsidianVault";
 import { useBackupNow, usePreferences, useSetPreference, useSyncFromBackup } from "@/hooks/usePreferences";
+import { useUpcomingNotificationSettings } from "@/hooks/useUpcomingNotifications";
 import { useTheme } from "@/hooks/useTheme";
 import { parseSelectedCalendarIds, SELECTED_CALENDARS_PREF_KEY } from "@/lib/googleCalendarSelection";
 import { NOTIFICATION_DEFAULTS, WEEKDAY_LABELS } from "@/lib/notificationDefaults";
+import { NOTIFICATION_WINDOW_OPTIONS, type NotificationWindowDays } from "@/lib/notificationEngine";
 import type { Theme } from "@/store/themeStore";
 
 const THEME_OPTIONS: { value: Theme; label: string }[] = [
@@ -390,6 +392,81 @@ function NotificationPreferencesSection() {
   );
 }
 
+function UpcomingNotificationsSection() {
+  const { settings, setWindowDays, setPriorityOverrideEnabled, setRepeatDailyEnabled } =
+    useUpcomingNotificationSettings();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Upcoming Notifications</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          The dashboard's in-app notification center — what it proactively surfaces when you open
+          it, separate from the OS notifications above.
+        </p>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <Label>Notification window</Label>
+            <p className="text-xs text-muted-foreground">How far ahead to surface upcoming items.</p>
+          </div>
+          <Select
+            value={String(settings.windowDays)}
+            onValueChange={(v) => setWindowDays(Number(v) as NotificationWindowDays)}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {NOTIFICATION_WINDOW_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={String(opt.value)}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <Label>Priority reminders</Label>
+            <p className="text-xs text-muted-foreground">
+              Let high-priority items notify earlier than the window above.
+            </p>
+          </div>
+          <Switch
+            checked={settings.priorityOverrideEnabled}
+            onCheckedChange={(checked) => setPriorityOverrideEnabled(checked)}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <Label>Repeated reminders</Label>
+            <p className="text-xs text-muted-foreground">
+              Keep re-notifying about high-priority items daily while they're incomplete.
+            </p>
+          </div>
+          <Select
+            value={settings.repeatDailyEnabled ? "daily" : "off"}
+            onValueChange={(v) => setRepeatDailyEnabled(v === "daily")}
+          >
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">Off</SelectItem>
+              <SelectItem value="daily">Daily</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SyncIntervalSection() {
   const { data: prefs } = usePreferences();
   const setPreference = useSetPreference();
@@ -715,6 +792,7 @@ export default function Settings() {
       <GoogleCalendarsSection />
       <ContextManagementSection />
       <NotificationPreferencesSection />
+      <UpcomingNotificationsSection />
       <SyncIntervalSection />
       <BackupSection />
       <ObsidianVaultSection />

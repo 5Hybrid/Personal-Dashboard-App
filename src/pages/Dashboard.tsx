@@ -5,6 +5,7 @@ import { DayRingCard } from "@/components/dashboard/DayRingCard";
 import { ExternalAppsSection } from "@/components/externalApps/ExternalAppsSection";
 import { FocusWidget } from "@/components/dashboard/FocusWidget";
 import { MyTasksCard } from "@/components/dashboard/MyTasksCard";
+import { NotificationCenter } from "@/components/dashboard/NotificationCenter";
 import { QuickNotesCard } from "@/components/dashboard/QuickNotesCard";
 import { SyncConflicts } from "@/components/dashboard/SyncConflicts";
 import { TodaysScheduleCard } from "@/components/dashboard/TodaysScheduleCard";
@@ -18,6 +19,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 p-8">
+      <NotificationCenter items={allItems} itemsReady={itemsQuery.isSuccess} />
+
       <DashboardHeader />
 
       <SyncConflicts />
