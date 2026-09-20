@@ -171,7 +171,7 @@ export function evaluateNotifications(
 
   for (const item of items) {
     if (!isNotifiable(item)) continue;
-    const days = daysUntil(item.due_date);
+    const days = daysUntil(item.due_date, now);
     if (days === null) continue;
 
     const windowDays = effectiveWindowDays(item.priority, settings);
