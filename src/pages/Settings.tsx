@@ -492,10 +492,12 @@ function SyncIntervalSection() {
               setLocalValue(null);
             }}
           />
-          <span className="text-sm text-muted-foreground">minutes between Google syncs</span>
+          <span className="text-sm text-muted-foreground">minutes between full Google syncs</span>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Takes effect once Google Calendar/Tasks sync (build Phase 7) is connected.
+          Edits to a synced item are also pushed within about a second, whether or not this
+          interval has elapsed — this just controls the periodic full pull/push safety net. Takes
+          effect once Google Calendar/Tasks sync is connected.
         </p>
       </CardContent>
     </Card>

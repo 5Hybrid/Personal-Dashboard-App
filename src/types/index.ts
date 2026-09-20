@@ -58,11 +58,15 @@ export interface Item {
   notes: string | null;
   tags: string[] | null;
   attachments: string[] | null;
+  location: string | null;
 
   google_calendar_id: string | null;
   google_task_id: string | null;
   last_synced_at_calendar: string | null;
   last_synced_at_tasks: string | null;
+  last_sync_error: string | null;
+  last_sync_attempted_at: string | null;
+  sync_failure_count: number;
 
   assignment_type: string | null;
   points_earned: number | null;
@@ -141,6 +145,8 @@ export interface GoogleEventDateTime {
 export interface GoogleCalendarEvent {
   id: string;
   summary: string | null;
+  description: string | null;
+  location: string | null;
   updated: string | null;
   status: string | null;
   start: GoogleEventDateTime | null;
@@ -159,19 +165,49 @@ export interface GoogleCalendarListEntry {
 export interface GoogleTask {
   id: string;
   title: string | null;
+  notes: string | null;
   updated: string | null;
   status: string | null;
   due: string | null;
   deleted: boolean | null;
 }
 
+/** Mirrors google/sync.rs's SyncSnapshot — one field per app-supported sync
+ * field. `null`/absent on a remote snapshot means that source (Calendar or
+ * Tasks) has no concept of that field, not that its value happens to match. */
+export interface SyncSnapshot {
+  title?: string | null;
+  notes?: string | null;
+  due_date?: string | null;
+  due_time?: string | null;
+  status?: string | null;
+  priority?: string | null;
+  estimated_duration?: number | null;
+  location?: string | null;
+}
+
+export interface SyncSnapshotFieldDiff {
+  field: string;
+  local: string;
+  remote: string;
+}
+
 export interface SyncConflict {
   id: string;
   item_id: string;
   source: "calendar" | "tasks";
-  local_snapshot: { title?: string; due_date?: string | null; due_time?: string | null; status?: string };
-  remote_snapshot: { title?: string; due_date?: string | null; status?: string; source?: string };
+  local_snapshot: SyncSnapshot;
+  remote_snapshot: SyncSnapshot;
+  diff: SyncSnapshotFieldDiff[];
   created_at: string;
+}
+
+export type ItemSyncStatusValue = "synced" | "pending" | "failed" | "conflict";
+
+export interface ItemSyncStatus {
+  item_id: string;
+  status: ItemSyncStatusValue;
+  last_sync_error: string | null;
 }
 
 export interface RemoteBackupStatus {
@@ -221,6 +257,7 @@ export interface ItemInput {
   notes?: string | null;
   tags?: string[] | null;
   attachments?: string[] | null;
+  location?: string | null;
   assignment_type?: string | null;
   points_earned?: number | null;
   points_possible?: number | null;

@@ -11,6 +11,7 @@ import type {
   InboxItemInput,
   Item,
   ItemInput,
+  ItemSyncStatus,
   Note,
   NoteInput,
   ObsidianNote,
@@ -76,6 +77,8 @@ export const commands = {
   connectGoogle: () => invoke<void>("connect_google"),
   disconnectGoogle: () => invoke<void>("disconnect_google"),
   syncNow: () => invoke<void>("sync_now"),
+  pushItemNow: (itemId: string) => invoke<void>("push_item_now", { itemId }),
+  listItemSyncStatuses: () => invoke<ItemSyncStatus[]>("list_item_sync_statuses"),
   listSyncConflicts: () => invoke<SyncConflict[]>("list_sync_conflicts"),
   resolveConflict: (id: string, resolution: "mine" | "google" | "dismiss") =>
     invoke<void>("resolve_conflict", { id, resolution }),

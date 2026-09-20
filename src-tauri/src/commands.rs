@@ -80,10 +80,14 @@ pub(crate) fn row_to_item(row: &Row) -> rusqlite::Result<Item> {
         notes: row.get("notes")?,
         tags: text_to_vec(row.get("tags")?),
         attachments: text_to_vec(row.get("attachments")?),
+        location: row.get("location")?,
         google_calendar_id: row.get("google_calendar_id")?,
         google_task_id: row.get("google_task_id")?,
         last_synced_at_calendar: row.get("last_synced_at_calendar")?,
         last_synced_at_tasks: row.get("last_synced_at_tasks")?,
+        last_sync_error: row.get("last_sync_error")?,
+        last_sync_attempted_at: row.get("last_sync_attempted_at")?,
+        sync_failure_count: row.get("sync_failure_count")?,
         assignment_type: row.get("assignment_type")?,
         points_earned: row.get("points_earned")?,
         points_possible: row.get("points_possible")?,
@@ -103,7 +107,8 @@ const CONTEXT_COLUMNS: &str =
 
 pub(crate) const ITEM_COLUMNS: &str = "id, title, description, category, subcategory_id, subcategory_text, \
     due_date, due_time, estimated_duration, priority, status, repeat_settings, color, notes, \
-    tags, attachments, google_calendar_id, google_task_id, last_synced_at_calendar, last_synced_at_tasks, \
+    tags, attachments, location, google_calendar_id, google_task_id, last_synced_at_calendar, last_synced_at_tasks, \
+    last_sync_error, last_sync_attempted_at, sync_failure_count, \
     assignment_type, points_earned, points_possible, \
     obsidian_source_id, obsidian_vault_path, obsidian_source_folder, obsidian_source_file, obsidian_source_section, \
     created_at, updated_at, deleted_at";
@@ -115,7 +120,7 @@ pub(crate) fn insert_item_row(conn: &Connection, item: &Item) -> rusqlite::Resul
     conn.execute(
         &format!(
             "INSERT INTO item ({ITEM_COLUMNS}) VALUES \
-             (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31)"
+             (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35)"
         ),
         params![
             item.id,
@@ -134,10 +139,14 @@ pub(crate) fn insert_item_row(conn: &Connection, item: &Item) -> rusqlite::Resul
             item.notes,
             vec_to_text(&item.tags),
             vec_to_text(&item.attachments),
+            item.location,
             item.google_calendar_id,
             item.google_task_id,
             item.last_synced_at_calendar,
             item.last_synced_at_tasks,
+            item.last_sync_error,
+            item.last_sync_attempted_at,
+            item.sync_failure_count,
             item.assignment_type,
             item.points_earned,
             item.points_possible,
@@ -161,11 +170,12 @@ pub(crate) fn update_item_row(conn: &Connection, item: &Item) -> rusqlite::Resul
         "UPDATE item SET title=?2, description=?3, category=?4, subcategory_id=?5, \
          subcategory_text=?6, due_date=?7, due_time=?8, estimated_duration=?9, priority=?10, \
          status=?11, repeat_settings=?12, color=?13, notes=?14, tags=?15, attachments=?16, \
-         google_calendar_id=?17, google_task_id=?18, last_synced_at_calendar=?19, last_synced_at_tasks=?20, \
-         assignment_type=?21, points_earned=?22, points_possible=?23, \
-         obsidian_source_id=?24, obsidian_vault_path=?25, obsidian_source_folder=?26, \
-         obsidian_source_file=?27, obsidian_source_section=?28, \
-         updated_at=?29, deleted_at=?30 WHERE id=?1",
+         location=?17, google_calendar_id=?18, google_task_id=?19, last_synced_at_calendar=?20, \
+         last_synced_at_tasks=?21, last_sync_error=?22, last_sync_attempted_at=?23, sync_failure_count=?24, \
+         assignment_type=?25, points_earned=?26, points_possible=?27, \
+         obsidian_source_id=?28, obsidian_vault_path=?29, obsidian_source_folder=?30, \
+         obsidian_source_file=?31, obsidian_source_section=?32, \
+         updated_at=?33, deleted_at=?34 WHERE id=?1",
         params![
             item.id,
             item.title,
@@ -183,10 +193,14 @@ pub(crate) fn update_item_row(conn: &Connection, item: &Item) -> rusqlite::Resul
             item.notes,
             vec_to_text(&item.tags),
             vec_to_text(&item.attachments),
+            item.location,
             item.google_calendar_id,
             item.google_task_id,
             item.last_synced_at_calendar,
             item.last_synced_at_tasks,
+            item.last_sync_error,
+            item.last_sync_attempted_at,
+            item.sync_failure_count,
             item.assignment_type,
             item.points_earned,
             item.points_possible,
@@ -297,10 +311,14 @@ pub fn create_item(state: State<DbState>, input: ItemInput) -> Result<Item, Stri
         notes: input.notes,
         tags: input.tags,
         attachments: input.attachments,
+        location: input.location,
         google_calendar_id: None,
         google_task_id: None,
         last_synced_at_calendar: None,
         last_synced_at_tasks: None,
+        last_sync_error: None,
+        last_sync_attempted_at: None,
+        sync_failure_count: 0,
         assignment_type: input.assignment_type,
         points_earned: input.points_earned,
         points_possible: input.points_possible,
@@ -319,11 +337,22 @@ pub fn create_item(state: State<DbState>, input: ItemInput) -> Result<Item, Stri
 }
 
 #[tauri::command]
-pub fn update_item(state: State<DbState>, mut item: Item) -> Result<Item, String> {
+pub fn update_item(
+    state: State<DbState>,
+    debouncer: State<crate::google::sync::PushDebouncer>,
+    mut item: Item,
+) -> Result<Item, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     item.updated_at = now();
     update_item_row(&conn, &item).map_err(|e| e.to_string())?;
     touch_activity(&conn);
+    drop(conn);
+    // Schedule a debounced push instead of waiting out the rest of the
+    // periodic sync interval (up to sync_interval_minutes) — see
+    // google::sync::PushDebouncer. Harmless to call unconditionally: if
+    // nothing about this save actually needs pushing (e.g. it didn't touch
+    // any synced field), the debounced push is just a same-token no-op.
+    debouncer.schedule_push(item.id.clone());
     Ok(item)
 }
 

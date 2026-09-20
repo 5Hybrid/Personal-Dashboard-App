@@ -11,14 +11,16 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CategoryBadge } from "@/components/CategoryBadge";
 import { QueryBoundary } from "@/components/QueryBoundary";
+import { SyncStatusCell } from "@/components/SyncStatusCell";
 import { useContexts } from "@/hooks/useContexts";
+import { useGoogleConnected, useItemSyncStatuses } from "@/hooks/useGoogle";
 import { useItems, useUpdateItem } from "@/hooks/useItems";
 import { assignmentRowClass, COMPLETED_TEXT_CLASS } from "@/lib/classColors";
 import { NEXT_STATUS } from "@/lib/itemStatus";
 import { daysUntil, SAVED_VIEWS } from "@/lib/masterListViews";
 import { cn } from "@/lib/utils";
 import { type GroupBy, useMasterListStore } from "@/store/masterListStore";
-import type { Category, Item } from "@/types";
+import type { Category, Item, ItemSyncStatusValue } from "@/types";
 
 interface Row {
   item: Item;
@@ -30,10 +32,18 @@ interface Row {
 export default function MasterList() {
   const { data: items, isLoading, isError, error, refetch } = useItems();
   const { data: contexts } = useContexts();
+  const { data: connected } = useGoogleConnected();
+  const { data: syncStatuses } = useItemSyncStatuses(!!connected);
   const updateItem = useUpdateItem();
   const { activeViewId, search, groupBy, setActiveView, setSearch, setGroupBy } =
     useMasterListStore();
   const [sorting, setSorting] = useState<SortingState>([{ id: "due_date", desc: false }]);
+
+  const syncStatusByItemId = useMemo(() => {
+    const map = new Map<string, { status: ItemSyncStatusValue; error: string | null }>();
+    syncStatuses?.forEach((s) => map.set(s.item_id, { status: s.status, error: s.last_sync_error }));
+    return map;
+  }, [syncStatuses]);
 
   const contextNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -68,6 +78,7 @@ export default function MasterList() {
       { id: "subcategory", header: "Subcategory/Context", accessorFn: (r) => r.contextName ?? "—" },
       { id: "due_date", header: "Due Date", accessorFn: (r) => r.item.due_date ?? "—" },
       { id: "due_time", header: "Due Time", accessorFn: (r) => r.item.due_time ?? "—" },
+      { id: "location", header: "Location", accessorFn: (r) => r.item.location ?? "—" },
       { id: "priority", header: "Priority", accessorFn: (r) => r.item.priority },
       {
         id: "status",
@@ -100,18 +111,27 @@ export default function MasterList() {
         accessorFn: (r) => r.item.tags?.join(", ") || "—",
       },
       { id: "days_until_due", header: "Days Until Due", accessorFn: (r) => r.daysUntilDue ?? "—" },
-      {
-        id: "gcal",
-        header: "Google Calendar",
-        accessorFn: (r) => (r.item.google_calendar_id ? "Synced" : "Not synced"),
-      },
-      {
-        id: "gtasks",
-        header: "Google Tasks",
-        accessorFn: (r) => (r.item.google_task_id ? "Synced" : "Not synced"),
-      },
+      ...(connected
+        ? [
+            {
+              id: "sync",
+              header: "Sync",
+              accessorFn: (r) => syncStatusByItemId.get(r.item.id)?.status ?? "",
+              cell: (ctx) => {
+                const entry = syncStatusByItemId.get(ctx.row.original.item.id);
+                return (
+                  <SyncStatusCell
+                    itemId={ctx.row.original.item.id}
+                    status={entry?.status}
+                    error={entry?.error}
+                  />
+                );
+              },
+            } satisfies ColumnDef<Row>,
+          ]
+        : []),
     ],
-    [updateItem],
+    [updateItem, connected, syncStatusByItemId],
   );
 
   const rows: Row[] = useMemo(() => {

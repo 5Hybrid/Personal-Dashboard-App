@@ -129,8 +129,9 @@ pub fn run() {
                 .build(app)?;
 
             notifications::spawn(app.handle().clone());
-            let sync_trigger = google::sync::spawn(app.handle().clone(), db_path.clone());
+            let (sync_trigger, push_debouncer) = google::sync::spawn(app.handle().clone(), db_path.clone());
             app.manage(sync_trigger);
+            app.manage(push_debouncer);
             backup::spawn(db_path.clone());
 
             // Silent update check on every launch (autostart or manual) — see
@@ -186,6 +187,8 @@ pub fn run() {
             google::commands::connect_google,
             google::commands::disconnect_google,
             google::commands::sync_now,
+            google::commands::push_item_now,
+            google::commands::list_item_sync_statuses,
             google::commands::list_sync_conflicts,
             google::commands::resolve_conflict,
             google::commands::list_upcoming_calendar_events,

@@ -41,6 +41,10 @@ pub struct CalendarEvent {
     #[serde(default)]
     pub summary: Option<String>,
     #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
     pub updated: Option<String>,
     #[serde(default)]
     pub status: Option<String>,
@@ -201,6 +205,8 @@ pub struct Task {
     pub id: String,
     #[serde(default)]
     pub title: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
     #[serde(default)]
     pub updated: Option<String>,
     #[serde(default)]
@@ -421,6 +427,7 @@ pub fn event_body(
     due_date: &str,
     due_time: Option<&str>,
     duration_minutes: Option<i64>,
+    location: Option<&str>,
 ) -> Value {
     let (start, end) = match due_time {
         Some(time) => {
@@ -456,6 +463,7 @@ pub fn event_body(
     json!({
         "summary": title,
         "description": description,
+        "location": location,
         "start": start,
         "end": end,
     })

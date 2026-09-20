@@ -6,6 +6,7 @@ const CONFLICTS_KEY = ["google", "conflicts"];
 const UPCOMING_EVENTS_KEY = ["google", "upcomingEvents"];
 const UPCOMING_TASKS_KEY = ["google", "upcomingTasks"];
 const CALENDAR_LIST_KEY = ["google", "calendarList"];
+export const ITEM_SYNC_STATUSES_KEY = ["google", "itemSyncStatuses"];
 
 export function useGoogleConnected() {
   return useQuery({
@@ -41,6 +42,8 @@ export function useSyncNow() {
     mutationFn: () => commands.syncNow(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["items"] });
+      // Prefix match: also covers ["google", "itemSyncStatuses"] and
+      // ["google", "conflicts"].
       queryClient.invalidateQueries({ queryKey: ["google"] });
     },
     // A dead refresh token gets cleared server-side as part of the failure
@@ -55,6 +58,31 @@ export function useSyncNow() {
 
 export function useSyncConflicts() {
   return useQuery({ queryKey: CONFLICTS_KEY, queryFn: commands.listSyncConflicts });
+}
+
+// Polled rather than only invalidated on mutation: the background sync loop
+// and the debounced per-item push (see google/sync.rs's PushDebouncer) can
+// both change an item's sync status without any frontend action at all —
+// this is what makes a "Sync failed" badge or a Pending→Synced transition
+// show up on its own instead of only after the user does something.
+export function useItemSyncStatuses(enabled: boolean) {
+  return useQuery({
+    queryKey: ITEM_SYNC_STATUSES_KEY,
+    queryFn: commands.listItemSyncStatuses,
+    enabled,
+    refetchInterval: 15_000,
+  });
+}
+
+export function usePushItemNow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: string) => commands.pushItemNow(itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["google"] });
+    },
+  });
 }
 
 export function useResolveConflict() {

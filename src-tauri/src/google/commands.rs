@@ -50,7 +50,60 @@ pub struct SyncConflict {
     pub source: String,
     pub local_snapshot: serde_json::Value,
     pub remote_snapshot: serde_json::Value,
+    /// Only the fields the two snapshots actually disagree on, computed
+    /// server-side (`sync::diff_snapshots`) so the frontend never needs its
+    /// own copy of "what does Calendar vs Tasks actually support" — see
+    /// Phase 2's "only display fields that differ."
+    pub diff: Vec<sync::SnapshotFieldDiff>,
     pub created_at: String,
+}
+
+/// Per-item sync state for the items list (Phase 4/6) — kept as its own
+/// lightweight command rather than a field on `Item` itself, since `Item` is
+/// also the shape `update_item` deserializes from the frontend and a derived
+/// (non-persisted) status has no business round-tripping through a save.
+#[derive(Debug, Serialize)]
+pub struct ItemSyncStatus {
+    pub item_id: String,
+    pub status: sync::SyncStatus,
+    pub last_sync_error: Option<String>,
+}
+
+#[tauri::command]
+pub fn list_item_sync_statuses(state: State<DbPathState>) -> Result<Vec<ItemSyncStatus>, String> {
+    let conn = open_conn(&state)?;
+    let mut item_stmt = conn
+        .prepare(&format!(
+            "SELECT {} FROM item WHERE deleted_at IS NULL",
+            crate::commands::ITEM_COLUMNS
+        ))
+        .map_err(|e| e.to_string())?;
+    let items: Vec<crate::models::Item> = item_stmt
+        .query_map([], crate::commands::row_to_item)
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut conflict_stmt = conn
+        .prepare("SELECT DISTINCT item_id FROM sync_conflict")
+        .map_err(|e| e.to_string())?;
+    let conflicted: std::collections::HashSet<String> = conflict_stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(items
+        .into_iter()
+        .map(|item| {
+            let status = sync::derive_sync_status(&item, conflicted.contains(&item.id));
+            ItemSyncStatus {
+                item_id: item.id.clone(),
+                status,
+                last_sync_error: item.last_sync_error.clone(),
+            }
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -88,6 +141,21 @@ pub fn sync_now(state: State<DbPathState>, sync_trigger: State<sync::SyncTrigger
     sync_trigger.run_sync_exclusive(&conn)
 }
 
+/// Per-item "Push to Google" / "Retry Sync" (Phase 5) — pushes exactly this
+/// item instead of running a whole-app sync. Routed through the same
+/// `run_lock` as `sync_now`/the background loop/the debouncer for the same
+/// duplicate-push reason documented on `SyncTrigger`.
+#[tauri::command]
+pub fn push_item_now(
+    state: State<DbPathState>,
+    sync_trigger: State<sync::SyncTrigger>,
+    item_id: String,
+) -> Result<(), String> {
+    let conn = open_conn(&state)?;
+    let access_token = oauth::get_valid_access_token(&conn)?;
+    sync_trigger.run_exclusive(|| sync::push_item_by_id(&conn, &access_token, &item_id))
+}
+
 #[tauri::command]
 pub fn list_sync_conflicts(state: State<DbPathState>) -> Result<Vec<SyncConflict>, String> {
     let conn = open_conn(&state)?;
@@ -101,6 +169,11 @@ pub fn list_sync_conflicts(state: State<DbPathState>) -> Result<Vec<SyncConflict
         .query_map([], |row| {
             let local_snapshot_text: String = row.get(3)?;
             let remote_snapshot_text: String = row.get(4)?;
+            let local: sync::SyncSnapshot =
+                serde_json::from_str(&local_snapshot_text).unwrap_or_default();
+            let remote: sync::SyncSnapshot =
+                serde_json::from_str(&remote_snapshot_text).unwrap_or_default();
+            let diff = sync::diff_snapshots(&local, &remote);
             Ok(SyncConflict {
                 id: row.get(0)?,
                 item_id: row.get(1)?,
@@ -109,6 +182,7 @@ pub fn list_sync_conflicts(state: State<DbPathState>) -> Result<Vec<SyncConflict
                     .unwrap_or(serde_json::Value::Null),
                 remote_snapshot: serde_json::from_str(&remote_snapshot_text)
                     .unwrap_or(serde_json::Value::Null),
+                diff,
                 created_at: row.get(5)?,
             })
         })
@@ -140,16 +214,22 @@ pub fn resolve_conflict(
         .map_err(|e| e.to_string())?;
 
     if resolution == "google" {
-        let remote: serde_json::Value =
-            serde_json::from_str(&remote_snapshot_text).unwrap_or(serde_json::Value::Null);
-        let title = remote.get("title").and_then(|v| v.as_str());
-        let due_date = remote.get("due_date").and_then(|v| v.as_str());
-        let status = remote.get("status").and_then(|v| v.as_str());
-        let mapped_status = if status == Some("completed") {
-            Some("Completed")
-        } else {
-            None
-        };
+        // Full restore of every field the remote source has an opinion on —
+        // not just title/due_date/status (Phase 2's "Keep Google's must
+        // restore the complete supported remote state" requirement).
+        let remote: sync::SyncSnapshot =
+            serde_json::from_str(&remote_snapshot_text).unwrap_or_default();
+        let item: crate::models::Item = conn
+            .query_row(
+                &format!(
+                    "SELECT {} FROM item WHERE id = ?1",
+                    crate::commands::ITEM_COLUMNS
+                ),
+                params![item_id],
+                crate::commands::row_to_item,
+            )
+            .map_err(|e| e.to_string())?;
+        let resolved = sync::apply_remote_snapshot_to_item(&item, &remote);
 
         // Only the conflict's own source channel's last_synced_at advances —
         // the other channel's timeline is untouched (see db.rs / sync.rs).
@@ -159,24 +239,24 @@ pub fn resolve_conflict(
             "last_synced_at_tasks"
         };
         let ts = crate::commands::now();
-        if let Some(title) = title {
-            let _ = conn.execute(
-                &format!("UPDATE item SET title = ?2, updated_at = ?3, {last_synced_column} = ?3 WHERE id = ?1"),
-                params![item_id, title, ts],
-            );
-        }
-        if let Some(due_date) = due_date {
-            let _ = conn.execute(
-                "UPDATE item SET due_date = ?2 WHERE id = ?1",
-                params![item_id, due_date],
-            );
-        }
-        if let Some(mapped_status) = mapped_status {
-            let _ = conn.execute(
-                "UPDATE item SET status = ?2 WHERE id = ?1",
-                params![item_id, mapped_status],
-            );
-        }
+        let _ = conn.execute(
+            &format!(
+                "UPDATE item SET title = ?2, notes = ?3, due_date = ?4, due_time = ?5, \
+                 status = ?6, location = ?7, estimated_duration = ?8, updated_at = ?9, \
+                 {last_synced_column} = ?9 WHERE id = ?1"
+            ),
+            params![
+                item_id,
+                resolved.title,
+                resolved.notes,
+                resolved.due_date,
+                resolved.due_time,
+                resolved.status,
+                resolved.location,
+                resolved.estimated_duration,
+                ts,
+            ],
+        );
     } else if resolution == "dismiss" {
         let last_synced_column = if source == "calendar" {
             "last_synced_at_calendar"
@@ -217,7 +297,8 @@ pub fn resolve_conflict(
                 item.notes.as_deref(),
                 due_date,
                 item.due_time.as_deref(),
-                item.estimated_duration.map(|d| d as i64),
+                item.estimated_duration,
+                item.location.as_deref(),
             );
             let event = match &item.google_calendar_id {
                 Some(gid) => api::update_event(&access_token, gid, &body),

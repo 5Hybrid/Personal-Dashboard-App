@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS item (
   notes TEXT,
   tags TEXT,
   attachments TEXT,
+  location TEXT,
 
   google_calendar_id TEXT,
   google_task_id TEXT,
@@ -56,6 +57,15 @@ CREATE TABLE IF NOT EXISTS item (
   -- change, permanently hiding it from decide_pull_action. See sync.rs.
   last_synced_at_calendar TEXT,
   last_synced_at_tasks TEXT,
+
+  -- Sync-failure state (see google/sync.rs push_one_item). Item-level rather
+  -- than split per-channel like last_synced_at_* above: the UI only ever
+  -- shows one "sync failed" indicator per item, and a combined message is
+  -- more useful to a user than two independent ones. Cleared (error to NULL,
+  -- count to 0) the moment every channel attempted in a push cycle succeeds.
+  last_sync_error TEXT,
+  last_sync_attempted_at TEXT,
+  sync_failure_count INTEGER NOT NULL DEFAULT 0,
 
   assignment_type TEXT,
   points_earned REAL,
@@ -209,6 +219,7 @@ pub fn init(db_path: &Path) -> rusqlite::Result<Connection> {
     migrate_split_last_synced_at(&conn)?;
     migrate_regenerate_device_id(&conn)?;
     migrate_add_obsidian_source_columns(&conn)?;
+    migrate_add_location_and_sync_status_columns(&conn)?;
     Ok(conn)
 }
 
@@ -284,6 +295,25 @@ fn migrate_add_obsidian_source_columns(conn: &Connection) -> rusqlite::Result<()
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_item_obsidian_source_id \
          ON item(obsidian_source_id) WHERE obsidian_source_id IS NOT NULL;",
     )
+}
+
+/// One-time migration adding `item.location` (Calendar round-trip, see
+/// google/sync.rs) and the sync-failure tracking columns (`last_sync_error`,
+/// `last_sync_attempted_at`, `sync_failure_count`) for DBs created before
+/// they existed. Same idempotent pattern as the other migrate_* functions.
+fn migrate_add_location_and_sync_status_columns(conn: &Connection) -> rusqlite::Result<()> {
+    let has_column: bool = conn
+        .prepare("SELECT 1 FROM pragma_table_info('item') WHERE name = 'location'")?
+        .exists([])?;
+    if !has_column {
+        conn.execute_batch(
+            "ALTER TABLE item ADD COLUMN location TEXT;
+             ALTER TABLE item ADD COLUMN last_sync_error TEXT;
+             ALTER TABLE item ADD COLUMN last_sync_attempted_at TEXT;
+             ALTER TABLE item ADD COLUMN sync_failure_count INTEGER NOT NULL DEFAULT 0;",
+        )?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

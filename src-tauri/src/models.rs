@@ -48,11 +48,23 @@ pub struct Item {
     pub notes: Option<String>,
     pub tags: Option<Vec<String>>,
     pub attachments: Option<Vec<String>>,
+    /// Round-trips with Google Calendar's `location` field (see
+    /// google/sync.rs's apply_remote_calendar_event / push_one_item). Has no
+    /// Google Tasks equivalent.
+    pub location: Option<String>,
 
     pub google_calendar_id: Option<String>,
     pub google_task_id: Option<String>,
     pub last_synced_at_calendar: Option<String>,
     pub last_synced_at_tasks: Option<String>,
+
+    /// Sync-failure state — see the `item.last_sync_error` column comment in
+    /// db.rs. `sync_status` in the frontend Item type is *derived* from these
+    /// plus last_synced_at_*/updated_at/open-conflict, not a separate stored
+    /// enum (see google/sync.rs::derive_sync_status and its frontend mirror).
+    pub last_sync_error: Option<String>,
+    pub last_sync_attempted_at: Option<String>,
+    pub sync_failure_count: i64,
 
     pub assignment_type: Option<String>,
     pub points_earned: Option<f64>,
@@ -226,6 +238,7 @@ pub struct ItemInput {
     pub notes: Option<String>,
     pub tags: Option<Vec<String>>,
     pub attachments: Option<Vec<String>>,
+    pub location: Option<String>,
     pub assignment_type: Option<String>,
     pub points_earned: Option<f64>,
     pub points_possible: Option<f64>,

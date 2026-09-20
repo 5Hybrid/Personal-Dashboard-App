@@ -33,39 +33,43 @@ export function SyncConflicts() {
                 Dismiss
               </Button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Mine</p>
-                <p>{conflict.local_snapshot.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {conflict.local_snapshot.due_date ?? "—"} · {conflict.local_snapshot.status}
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-1"
-                  disabled={resolveConflict.isPending}
-                  onClick={() => resolveConflict.mutate({ id: conflict.id, resolution: "mine" })}
-                >
-                  Keep mine
-                </Button>
+            {conflict.diff.length > 0 ? (
+              <div className="mb-2 space-y-2">
+                {conflict.diff.map((d) => (
+                  <div key={d.field} className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <p className="font-medium text-muted-foreground">{d.field} (mine)</p>
+                      <p className="whitespace-pre-wrap">{d.local}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-muted-foreground">{d.field} (Google's)</p>
+                      <p className="whitespace-pre-wrap">{d.remote}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Google's</p>
-                <p>{conflict.remote_snapshot.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {conflict.remote_snapshot.due_date ?? "—"} · {conflict.remote_snapshot.status}
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-1"
-                  disabled={resolveConflict.isPending}
-                  onClick={() => resolveConflict.mutate({ id: conflict.id, resolution: "google" })}
-                >
-                  Keep Google's
-                </Button>
-              </div>
+            ) : (
+              <p className="mb-2 text-xs text-muted-foreground">
+                Nothing visibly different — likely just a re-sync timing overlap.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={resolveConflict.isPending}
+                onClick={() => resolveConflict.mutate({ id: conflict.id, resolution: "mine" })}
+              >
+                Keep mine
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={resolveConflict.isPending}
+                onClick={() => resolveConflict.mutate({ id: conflict.id, resolution: "google" })}
+              >
+                Keep Google's
+              </Button>
             </div>
           </div>
         ))}
