@@ -4,49 +4,61 @@ Known local-dev/build gotchas for this app, why they happen, and how to fix them
 
 ## "Hmmm... can't reach this page — localhost refused to connect" (ERR_CONNECTION_REFUSED)
 
-**When it happens:** after building, or after running the app in dev mode.
+**When it happens:** after building, or after running the app in dev mode — including from
+the **release** shortcut, which should never depend on a dev server at all.
 
-**What it means:** the window that opened is a **debug** build. Tauri bakes the
-content-loading mode in at compile time based on Rust's `debug_assertions`:
+**Real root cause (fixed 2026-09-20):** Tauri decides whether a compiled app loads its
+frontend from the Vite dev server (`devUrl`) or from the embedded `frontendDist` bundle
+based on a single thing: whether the `tauri` crate's own `custom-protocol` Cargo feature is
+enabled for *this* build (`tauri-build`'s `is_dev()`, `cfg(dev)` in `tauri`'s `manager/mod.rs`
+— **not** debug vs. release, not `debug_assertions`). This project's `src-tauri/Cargo.toml`
+was missing the `[features]` block that wires that up, so `custom-protocol` was never enabled
+for *any* build — debug, release, `cargo build`, or `cargo build --release` all resolved to
+"dev mode" and unconditionally tried to load `http://localhost:1420`, whether or not Vite was
+running. This is why the release build launched from the taskbar shortcut showed this screen
+even though release builds are supposed to be self-contained.
 
-| Build | Loads frontend from |
-|---|---|
-| `cargo build` / `cargo run` / `npm run tauri dev` (debug) | `http://localhost:1420` — the Vite dev server (`tauri.conf.json`'s `build.devUrl`) |
-| `cargo build --release` / `npm run tauri build` (release) | The embedded `dist/` bundle — never touches localhost |
+**The fix**, now in `Cargo.toml`:
 
-So this screen always means: a debug-mode window opened, but **nothing is listening on
-port 1420**. Two ways that happens:
-
-1. **You launched the debug exe directly** (`src-tauri/target/debug/tauri-app.exe`, `cargo
-   run`, or an IDE "Run" button) without the Vite dev server running alongside it.
-   → Use `npm run tauri dev` instead — it starts Vite for you (`beforeDevCommand` in
-   `tauri.conf.json`). Never double-click `target/debug/tauri-app.exe` on its own.
-
-2. **A previous dev session's Vite process didn't fully exit** (e.g. you closed the
-   terminal/IDE instead of Ctrl+C'ing it — a common way Windows leaves orphaned `node.exe`
-   processes behind). `vite.config.ts` sets `strictPort: true` on 1420, so the *new* Vite
-   instance for your next `npm run dev` / `tauri dev` can't bind that port and just exits —
-   but the Tauri window still opens and tries to load `http://localhost:1420`, which now has
-   nobody listening at all.
-
-**Fix (already automated):** `predev` in `package.json` runs
-[`scripts/free-dev-port.js`](../scripts/free-dev-port.js) before every `npm run dev`
-(and therefore before every `tauri dev`, since that's what `beforeDevCommand` invokes) and
-kills whatever's squatting on port 1420. This should make case 2 self-healing.
-
-**Manual recovery** if it still happens (e.g. you ran `vite`/`tauri dev` some other way that
-skips the npm lifecycle hook):
-
-```powershell
-# Find and kill whatever's on port 1420
-Get-NetTCPConnection -LocalPort 1420 -ErrorAction SilentlyContinue |
-  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-
-# Or just run the same script directly
-node scripts/free-dev-port.js 1420
+```toml
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
 ```
 
-Then restart with `npm run tauri dev` (not the raw debug exe).
+`tauri dev` builds with default features disabled (so `custom-protocol` stays off and it
+correctly hits Vite for hot-reload); every other build path — `cargo build`,
+`cargo build --release`, `npm run tauri build` — uses default features, which now enable
+`custom-protocol`, so it correctly embeds and loads `dist/` instead.
+
+**If you ever touch `Cargo.toml`'s `[features]` block again:** don't remove this, and after
+any change to it, do a full rebuild (`cargo build --release` in `src-tauri`) — a stale
+`target/release/tauri-app.exe` won't pick up the fix on its own. Also remember `dist/` is
+embedded at *compile time*: if you rebuild the frontend (`npm run build` / `vite build`)
+*after* the last `cargo build --release`, the release exe is now serving a stale bundle and
+needs rebuilding again.
+
+### A second, unrelated cause during actual dev-mode work
+
+If this shows up specifically while running `npm run tauri dev` (not the release shortcut),
+that's *expected* to use `localhost:1420` — the error there means nothing is actually
+listening on it. `vite.config.ts` sets `strictPort: true`, so if a previous dev session's
+Vite process didn't fully exit (e.g. the terminal was closed instead of Ctrl+C'd, leaving an
+orphaned `node.exe` on Windows), the next dev server can't bind the port and exits, but the
+Tauri window still opens and tries to load it anyway.
+
+**Fix (already automated):** `predev` in `package.json` runs
+[`scripts/free-dev-port.js`](../scripts/free-dev-port.js) before every `npm run dev` (and
+therefore before every `tauri dev`) and kills whatever's squatting on port 1420.
+
+**Manual recovery** if needed:
+
+```powershell
+Get-NetTCPConnection -LocalPort 1420 -ErrorAction SilentlyContinue |
+  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+# or
+node scripts/free-dev-port.js 1420
+```
 
 ---
 
@@ -92,8 +104,10 @@ Always check `ParentProcessId` first.
 - **Testing a Rust/frontend change quickly?** Use `npm run tauri dev`. Never run
   `target/debug/tauri-app.exe` standalone.
 - **Want the real, installable build?** `npm run tauri build` (or `cargo build --release`
-  inside `src-tauri`), then launch `target/release/tauri-app.exe` — this one never needs a
-  dev server running.
+  inside `src-tauri`), then launch `target/release/tauri-app.exe`. As of the `[features]` fix
+  above, this one never needs a dev server running — but remember to rebuild it (both
+  `vite build` and `cargo build --release`, in that order) any time the frontend or backend
+  source changes, since both the bundle and the binary are compile-time snapshots.
 - **Always stop a dev session with Ctrl+C** in the terminal it's running in, not by closing
   the window/terminal app — that's what leaves orphaned Vite/WebView2 processes behind for
   next time.

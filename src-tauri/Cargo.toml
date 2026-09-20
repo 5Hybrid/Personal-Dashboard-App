@@ -14,6 +14,21 @@ edition = "2021"
 name = "tauri_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# `tauri-build`'s is_dev() (see its build.rs) decides devUrl-vs-frontendDist
+# purely by whether tauri's own `custom-protocol` feature is enabled — NOT by
+# debug/release profile. Without this block, that feature is never enabled by
+# ANY build (cargo build, cargo build --release, or a raw `cargo run`), so the
+# compiled app always tries to load devUrl (http://localhost:1420) at
+# runtime, even in release — this is what caused the persistent "localhost
+# refused to connect" screen. `tauri dev` builds with default features
+# disabled (so custom-protocol stays off and devUrl is used, as intended for
+# hot-reloading against Vite); every other build path uses default features,
+# which now include custom-protocol, so it correctly loads the embedded
+# frontendDist bundle instead. See docs/TROUBLESHOOTING.md.
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
