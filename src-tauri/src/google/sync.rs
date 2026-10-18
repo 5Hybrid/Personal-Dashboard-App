@@ -474,7 +474,7 @@ mod tests {
             id: "item-1".into(),
             title: "Finish analysis".into(),
             description: None,
-            category: "Work".into(),
+            category: "Personal".into(),
             subcategory_id: None,
             subcategory_text: None,
             due_date: Some("2026-03-05".into()),

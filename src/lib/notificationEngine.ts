@@ -6,7 +6,7 @@
 // given the live items and what's already been shown", with no side effects
 // of its own — callers (useUpcomingNotifications) own persisting the result.
 import { parseDateOnly, toDateKey } from "@/lib/calendarGrid";
-import { daysUntil } from "@/lib/masterListViews";
+import { daysUntil } from "@/lib/dates";
 import type { Item, Priority } from "@/types";
 
 export type NotificationWindowDays = 0 | 1 | 3 | 5 | 7;

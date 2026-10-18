@@ -1,7 +1,6 @@
 mod backup;
 mod commands;
 mod db;
-mod external_apps;
 mod focus;
 mod google;
 mod models;
@@ -157,19 +156,12 @@ pub fn run() {
             commands::create_context,
             commands::update_context,
             commands::list_contexts,
-            commands::create_inbox_item,
-            commands::list_inbox_items,
-            commands::delete_inbox_item,
             commands::create_quick_note,
             commands::list_quick_notes,
             commands::delete_quick_note,
             commands::create_note,
             commands::list_notes_for_context,
             commands::delete_note,
-            commands::create_personal_record,
-            commands::update_personal_record,
-            commands::list_personal_records,
-            commands::delete_personal_record,
             commands::get_preference,
             commands::set_preference,
             commands::list_preferences,
@@ -203,7 +195,6 @@ pub fn run() {
             enable_autostart,
             disable_autostart,
             notifications::notify_now,
-            external_apps::open_app_window,
             search::search_obsidian_vault,
             search::read_obsidian_note,
             search::test_obsidian_vault,

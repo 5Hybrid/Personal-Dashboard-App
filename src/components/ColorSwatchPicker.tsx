@@ -1,9 +1,9 @@
 import { Check } from "lucide-react";
-import { CLASS_COLOR_KEYS, CLASS_COLOR_SWATCH_CLASS, type ClassColorKey } from "@/lib/classColors";
+import { CLASS_COLOR_HEX, CLASS_COLOR_KEYS, type ClassColorKey } from "@/lib/classColors";
 import { cn } from "@/lib/utils";
 
-// Used by the class create/edit forms to pick the pastel theme stored in
-// Context.color (a palette key, not a raw hex — see classColors.ts).
+// Picks the color key stored in Context.color (a palette key, not a raw hex —
+// see classColors.ts).
 export function ColorSwatchPicker({
   value,
   onChange,
@@ -12,31 +12,22 @@ export function ColorSwatchPicker({
   onChange: (key: ClassColorKey | null) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <button
-        type="button"
-        title="No color"
-        onClick={() => onChange(null)}
-        className={cn(
-          "flex size-6 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/40 text-muted-foreground",
-          !value && "ring-2 ring-primary ring-offset-1",
-        )}
-      >
-        <span className="text-[10px]">×</span>
-      </button>
+    <div role="radiogroup" aria-label="Class color" className="flex flex-wrap items-center gap-2">
       {CLASS_COLOR_KEYS.map((key) => (
         <button
           key={key}
           type="button"
-          title={key}
+          role="radio"
+          aria-checked={value === key}
+          aria-label={key}
           onClick={() => onChange(key)}
           className={cn(
-            "flex size-6 items-center justify-center rounded-full",
-            CLASS_COLOR_SWATCH_CLASS[key],
-            value === key && "ring-2 ring-primary ring-offset-1",
+            "flex size-7 items-center justify-center rounded-full text-white transition-transform hover:scale-110",
+            value === key && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
           )}
+          style={{ background: CLASS_COLOR_HEX[key] }}
         >
-          {value === key && <Check className="size-3.5 text-black/60" />}
+          {value === key && <Check className="size-3.5" strokeWidth={3} />}
         </button>
       ))}
     </div>

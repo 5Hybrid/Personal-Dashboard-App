@@ -84,19 +84,7 @@ pub struct Item {
     pub deleted_at: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct InboxItem {
-    pub id: String,
-    pub title: String,
-    pub notes: Option<String>,
-    pub created_at: String,
-}
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct InboxItemInput {
-    pub title: String,
-    pub notes: Option<String>,
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct QuickNote {
@@ -127,24 +115,7 @@ pub struct NoteInput {
     pub body: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PersonalRecord {
-    pub id: String,
-    pub program_id: Option<String>,
-    pub exercise_name: String,
-    pub value: f64,
-    pub unit: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-}
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PersonalRecordInput {
-    pub program_id: Option<String>,
-    pub exercise_name: String,
-    pub value: f64,
-    pub unit: Option<String>,
-}
 
 /// One Obsidian note matched by `search::search_obsidian_vault`. `path` is
 /// vault-relative (forward-slash separated) so it round-trips back into

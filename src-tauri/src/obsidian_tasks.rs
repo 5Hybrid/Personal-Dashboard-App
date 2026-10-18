@@ -222,12 +222,12 @@ fn create_scanned_item(
         id: Uuid::new_v4().to_string(),
         title: text.to_string(),
         description: None,
-        // Not determinable from a bare checkbox line — "Custom" is the app's
-        // neutral catch-all category (build spec Phase 6: "do not invent
-        // values that cannot be determined from the note").
-        category: "Custom".to_string(),
+        // Not determinable from a bare checkbox line (build spec Phase 6: "do
+        // not invent values that cannot be determined from the note"), so it
+        // lands in Personal under an "Obsidian" list the user can re-file from.
+        category: "Personal".to_string(),
         subcategory_id: None,
-        subcategory_text: None,
+        subcategory_text: Some("Obsidian".to_string()),
         due_date: None,
         due_time: None,
         estimated_duration: None,

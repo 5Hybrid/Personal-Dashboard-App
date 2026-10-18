@@ -26,6 +26,9 @@ export interface ContextInput {
   grade_cutoffs?: Record<string, number> | null;
 }
 
+/** Stored categories. The UI groups everything into two areas — School and
+ * Personal — and treats any legacy category (Work, Gym, Finance…) as a
+ * Personal list of the same name; see lib/areas.ts. */
 export type Category =
   | "School"
   | "Work"
@@ -83,18 +86,6 @@ export interface Item {
   deleted_at: string | null;
 }
 
-export interface InboxItem {
-  id: string;
-  title: string;
-  notes: string | null;
-  created_at: string;
-}
-
-export interface InboxItemInput {
-  title: string;
-  notes?: string | null;
-}
-
 export interface QuickNote {
   id: string;
   body: string;
@@ -118,23 +109,6 @@ export interface NoteInput {
   context_id: string;
   item_id?: string | null;
   body: string;
-}
-
-export interface PersonalRecord {
-  id: string;
-  program_id: string | null;
-  exercise_name: string;
-  value: number;
-  unit: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PersonalRecordInput {
-  program_id?: string | null;
-  exercise_name: string;
-  value: number;
-  unit?: string | null;
 }
 
 export interface GoogleEventDateTime {

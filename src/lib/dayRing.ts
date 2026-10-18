@@ -1,5 +1,5 @@
 import { minutesFromTimeString, toDateKey } from "@/lib/calendarGrid";
-import { todayTimeline } from "@/lib/dashboardData";
+import { daysUntil } from "@/lib/dates";
 import { googleEventColor } from "@/lib/googleEventColors";
 import type { Category, GoogleCalendarEvent, Item } from "@/types";
 
@@ -91,7 +91,12 @@ export function buildInitialBlocks(
 ): RingBlock[] {
   const blocks: RingBlock[] = [sleepBlock(bedtime, wake)];
 
-  for (const item of todayTimeline(items)) {
+  // Everything due today (completed included — the ring is a picture of the
+  // whole day, not a work-remaining list).
+  const today = items
+    .filter((i) => daysUntil(i.due_date) === 0)
+    .sort((a, b) => (a.due_time ?? "99:99").localeCompare(b.due_time ?? "99:99"));
+  for (const item of today) {
     if (!item.due_time) continue;
     const start = minutesFromTimeString(item.due_time);
     const end = start + (item.estimated_duration ?? DEFAULT_ITEM_DURATION_MINUTES);

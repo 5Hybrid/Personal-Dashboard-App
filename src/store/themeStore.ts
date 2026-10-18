@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type Theme = "light" | "dark" | "system" | "futuristic";
+export type Theme = "light" | "dark" | "system";
+
+const THEMES: readonly Theme[] = ["light", "dark", "system"];
 
 interface ThemeState {
   theme: Theme;
@@ -19,6 +21,15 @@ export const useThemeStore = create<ThemeState>()(
       theme: "system",
       setTheme: (theme) => set({ theme }),
     }),
-    { name: THEME_STORAGE_KEY },
+    {
+      name: THEME_STORAGE_KEY,
+      version: 1,
+      // v0 could persist "futuristic", which no longer exists — fall back to
+      // following the OS instead of leaving the store holding a dead value.
+      migrate: (persisted) => {
+        const theme = (persisted as { theme?: string } | undefined)?.theme;
+        return { theme: THEMES.includes(theme as Theme) ? (theme as Theme) : "system" } as ThemeState;
+      },
+    },
   ),
 );

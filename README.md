@@ -1,10 +1,32 @@
-# Tauri + React + Typescript
+# Life OS
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+A personal dashboard for school and life — a Tauri 2 + React desktop app.
 
-## Recommended IDE Setup
+## What's in it
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- **Today** — greeting, today's tasks, the next 7 days, the 24-hour Day Ring, focus and quick notes.
+- **Tasks** — everything in one list, grouped by when it's due. Filter by School, Personal or a list. Click a task to edit it in the side peek.
+- **School** — each class is a page in the sidebar: assignments, weighted grades and notes.
+- **Calendar** — week and month views with Google Calendar events. Drag unscheduled tasks onto the week to block time.
+- **Focus** — start a session from any task; the timer survives restarts.
+- **Stats** — completions, on-time rate, focus time and class progress.
+- **Ctrl K** — one box to search everything or add a task in plain language:
+  `Lab 5 #python tue 11:59pm !high` → due Tuesday 11:59 PM, Python for Finance, high priority.
+  Press **N** anywhere to open it.
+
+Two areas only: **School** (classes) and **Personal** (lists, made with `#list`). Tasks from
+older versions in Work, Gym, Finance, etc. show up as Personal lists of the same name — nothing
+was deleted.
+
+## Develop
+
+```sh
+npm install
+npm run tauri dev
+```
+
+Tests: `npm test` (frontend) and `cargo test` in `src-tauri` (needs `GOOGLE_CLIENT_ID` /
+`GOOGLE_CLIENT_SECRET` set at compile time — any value works for tests).
 
 ## Troubleshooting
 

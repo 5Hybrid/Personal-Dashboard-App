@@ -1,806 +1,497 @@
 import { useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
+import { ChevronRight } from "lucide-react";
+import { Dot, PrimaryButton, Segmented, SecondaryButton, TopBar } from "@/components/lo/primitives";
+import { ClassDialog } from "@/components/school/ClassDialog";
 import { Switch } from "@/components/ui/switch";
-import { QueryBoundary } from "@/components/QueryBoundary";
 import { useAutostartEnabled, useSetAutostart } from "@/hooks/useAutostart";
 import { useContexts, useUpdateContext } from "@/hooks/useContexts";
-import {
-  useCalendarList,
-  useConnectGoogle,
-  useDisconnectGoogle,
-  useGoogleConnected,
-  useSyncNow,
-} from "@/hooks/useGoogle";
+import { useCalendarList, useConnectGoogle, useDisconnectGoogle, useGoogleConnected, useSyncNow } from "@/hooks/useGoogle";
 import { useScanObsidianTasks, useTestObsidianVault } from "@/hooks/useObsidianVault";
 import { useBackupNow, usePreferences, useSetPreference, useSyncFromBackup } from "@/hooks/usePreferences";
 import { useUpcomingNotificationSettings } from "@/hooks/useUpcomingNotifications";
 import { useTheme } from "@/hooks/useTheme";
+import { classColorHex } from "@/lib/classColors";
+import { DEFAULT_SLEEP_BEDTIME, DEFAULT_SLEEP_WAKE, SLEEP_BEDTIME_PREF_KEY, SLEEP_WAKE_PREF_KEY } from "@/lib/dayRing";
 import { parseSelectedCalendarIds, SELECTED_CALENDARS_PREF_KEY } from "@/lib/googleCalendarSelection";
 import { NOTIFICATION_DEFAULTS, WEEKDAY_LABELS } from "@/lib/notificationDefaults";
 import { NOTIFICATION_WINDOW_OPTIONS, type NotificationWindowDays } from "@/lib/notificationEngine";
+import { cn } from "@/lib/utils";
+import type { Context } from "@/types";
 import type { Theme } from "@/store/themeStore";
 
-const THEME_OPTIONS: { value: Theme; label: string }[] = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
-  { value: "futuristic", label: "Futuristic" },
+type Section = "general" | "google" | "notifications" | "obsidian" | "backup";
+const SECTIONS: { id: Section; label: string }[] = [
+  { id: "general", label: "General" },
+  { id: "google", label: "Google" },
+  { id: "notifications", label: "Notifications" },
+  { id: "obsidian", label: "Obsidian" },
+  { id: "backup", label: "Backup" },
 ];
 
-function ProfileSection() {
+type PrefKey = keyof typeof NOTIFICATION_DEFAULTS;
+
+function usePref() {
   const { data: prefs } = usePreferences();
   const setPreference = useSetPreference();
-  const [localName, setLocalName] = useState<string | null>(null);
-  const [localLocation, setLocalLocation] = useState<string | null>(null);
+  const get = (key: PrefKey) => prefs?.[key] ?? NOTIFICATION_DEFAULTS[key];
+  const set = (key: string, value: string) => setPreference.mutate({ key, value });
+  return { prefs, get, set };
+}
 
-  const name = localName ?? pref(prefs, "user_name");
-  const location = localLocation ?? pref(prefs, "weather_location");
+// ---- layout atoms --------------------------------------------------------
 
+function Group({ title, footer, children }: { title?: string; footer?: ReactNode; children: ReactNode }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Profile</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div>
-          <Label>Name</Label>
-          <p className="mb-1 text-xs text-muted-foreground">Used for the Dashboard's greeting.</p>
-          <Input
-            className="w-56"
-            value={name}
-            onChange={(e) => setLocalName(e.target.value)}
-            onBlur={() => {
-              setPreference.mutate({ key: "user_name", value: name });
-              setLocalName(null);
-            }}
-          />
-        </div>
-        <div>
-          <Label>Weather location</Label>
-          <p className="mb-1 text-xs text-muted-foreground">
-            City (and province/state, to disambiguate) for the Dashboard's weather card — looked up
-            via Open-Meteo, no account or API key needed.
-          </p>
-          <Input
-            className="w-56"
-            value={location}
-            onChange={(e) => setLocalLocation(e.target.value)}
-            onBlur={() => {
-              setPreference.mutate({ key: "weather_location", value: location });
-              setLocalLocation(null);
-            }}
-          />
-        </div>
-      </CardContent>
-    </Card>
+    <section className="flex flex-col gap-2">
+      {title && <h2 className="ml-1 text-[13px] font-medium text-fg3">{title}</h2>}
+      <div className="flex flex-col rounded-[14px] border border-line bg-sidebar [&>*+*]:border-t [&>*+*]:border-line">{children}</div>
+      {footer && <p className="ml-1 text-[12.5px] leading-snug text-fg3">{footer}</p>}
+    </section>
   );
 }
 
-function GoogleAccountSection() {
+function SettingRow({ label, description, children, htmlFor }: { label: string; description?: ReactNode; children?: ReactNode; htmlFor?: string }) {
+  return (
+    <div className="flex min-h-[52px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5">
+      <label htmlFor={htmlFor} className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-[14.5px]">{label}</span>
+        {description && <span className="text-[12.5px] text-fg3">{description}</span>}
+      </label>
+      {children && <div className="flex items-center gap-2">{children}</div>}
+    </div>
+  );
+}
+
+const inlineInput =
+  "h-8 rounded-lg border border-transparent bg-transparent px-2 text-right text-[14.5px] text-fg2 outline-none hover:bg-hover focus:border-line2 focus:bg-card focus:text-foreground";
+const pill = "h-8 rounded-lg bg-sunken px-2.5 text-sm outline-none focus:ring-2 focus:ring-ring/40";
+
+/** Text pref that saves on blur. */
+function TextPref({ id, prefKey, placeholder, width = "w-56", align = "right" }: { id?: string; prefKey: PrefKey; placeholder?: string; width?: string; align?: "right" | "left" }) {
+  const { get, set } = usePref();
+  const [local, setLocal] = useState<string | null>(null);
+  const value = local ?? get(prefKey);
+  return (
+    <input
+      id={id}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => {
+        if (local !== null) set(prefKey, local);
+        setLocal(null);
+      }}
+      className={cn(inlineInput, width, align === "left" && "text-left")}
+    />
+  );
+}
+
+function BoolPref({ prefKey, label }: { prefKey: PrefKey; label: string }) {
+  const { get, set } = usePref();
+  return <Switch aria-label={label} checked={get(prefKey) === "true"} onCheckedChange={(c) => set(prefKey, String(c))} />;
+}
+
+// ---- sections ------------------------------------------------------------
+
+function ClassesGroup() {
+  const { data: contexts } = useContexts();
+  const updateContext = useUpdateContext();
+  const [editing, setEditing] = useState<Context | undefined>();
+  const [creating, setCreating] = useState(false);
+  const classes = (contexts ?? []).filter((c) => c.type === "Class").sort((a, b) => Number(a.status === "Archived") - Number(b.status === "Archived") || a.name.localeCompare(b.name));
+
+  return (
+    <Group title="Classes" footer="Archived classes leave the sidebar but keep their assignments and grades.">
+      {classes.map((c) => (
+        <div key={c.id} className="flex min-h-[52px] items-center gap-3 px-4">
+          <Dot color={classColorHex(c.color)} />
+          <span className={cn("min-w-0 flex-1 truncate text-[14.5px]", c.status === "Archived" && "text-fg3")}>
+            {c.name}
+            {c.term && <span className="text-fg3"> · {c.term}</span>}
+          </span>
+          <button type="button" onClick={() => setEditing(c)} className="h-8 rounded-lg px-2.5 text-[13px] text-fg2 hover:bg-hover">
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => updateContext.mutate({ ...c, status: c.status === "Active" ? "Archived" : "Active" })}
+            className="h-8 rounded-lg px-2.5 text-[13px] text-fg2 hover:bg-hover"
+          >
+            {c.status === "Active" ? "Archive" : "Restore"}
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={() => setCreating(true)} className="flex min-h-[48px] items-center px-4 text-left text-[14.5px] text-brand hover:bg-hover">
+        Add class…
+      </button>
+      <ClassDialog open={!!editing} onOpenChange={(o) => !o && setEditing(undefined)} context={editing} />
+      <ClassDialog open={creating} onOpenChange={setCreating} />
+    </Group>
+  );
+}
+
+function General() {
+  const { theme, setTheme } = useTheme();
+  const { prefs, set } = usePref();
+  const { data: autostart, isLoading } = useAutostartEnabled();
+  const setAutostart = useSetAutostart();
+
+  return (
+    <>
+      <Group title="Appearance">
+        <SettingRow label="Theme" description="System follows your Windows light/dark setting.">
+          <Segmented<Theme>
+            label="Theme"
+            value={theme}
+            onChange={setTheme}
+            options={[
+              { value: "light", label: "Light" },
+              { value: "dark", label: "Dark" },
+              { value: "system", label: "System" },
+            ]}
+          />
+        </SettingRow>
+      </Group>
+
+      <Group title="You">
+        <SettingRow label="Name" description="Used in Today’s greeting." htmlFor="pref-name">
+          <TextPref id="pref-name" prefKey="user_name" />
+        </SettingRow>
+        <SettingRow label="Weather location" description="City and province, looked up with Open-Meteo." htmlFor="pref-weather">
+          <TextPref id="pref-weather" prefKey="weather_location" />
+        </SettingRow>
+      </Group>
+
+      <Group title="Day ring" footer="Sleep anchors the 24-hour ring on Today.">
+        <SettingRow label="Wake up" htmlFor="pref-wake">
+          <input
+            id="pref-wake"
+            type="time"
+            value={prefs?.[SLEEP_WAKE_PREF_KEY] ?? DEFAULT_SLEEP_WAKE}
+            onChange={(e) => e.target.value && set(SLEEP_WAKE_PREF_KEY, e.target.value)}
+            className={pill}
+          />
+        </SettingRow>
+        <SettingRow label="Bedtime" htmlFor="pref-bed">
+          <input
+            id="pref-bed"
+            type="time"
+            value={prefs?.[SLEEP_BEDTIME_PREF_KEY] ?? DEFAULT_SLEEP_BEDTIME}
+            onChange={(e) => e.target.value && set(SLEEP_BEDTIME_PREF_KEY, e.target.value)}
+            className={pill}
+          />
+        </SettingRow>
+      </Group>
+
+      <ClassesGroup />
+
+      <Group title="Startup" footer={setAutostart.isError ? <span className="text-danger">{String(setAutostart.error)}</span> : undefined}>
+        <SettingRow label="Start with Windows" description="Opens quietly to the tray so reminders still fire.">
+          <Switch
+            aria-label="Start with Windows"
+            checked={!!autostart}
+            disabled={isLoading || setAutostart.isPending}
+            onCheckedChange={(c) => setAutostart.mutate(c)}
+          />
+        </SettingRow>
+      </Group>
+    </>
+  );
+}
+
+function Google() {
   const { data: connected, isLoading } = useGoogleConnected();
   const connectGoogle = useConnectGoogle();
   const disconnectGoogle = useDisconnectGoogle();
   const syncNow = useSyncNow();
+  const { data: calendars } = useCalendarList(!!connected);
+  const { prefs, set } = usePref();
+  const selectedIds = useMemo(() => parseSelectedCalendarIds(prefs?.[SELECTED_CALENDARS_PREF_KEY]), [prefs]);
+
+  const error = connectGoogle.isError
+    ? String(connectGoogle.error)
+    : syncNow.isError
+      ? String(syncNow.error).includes("GOOGLE_RECONNECT_REQUIRED")
+        ? "Your Google connection expired. Reconnect to resume sync."
+        : String(syncNow.error)
+      : null;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Google Account</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : connected ? (
-          <>
-            <p className="text-sm text-muted-foreground">Connected to Google Calendar and Tasks.</p>
-            <div className="flex gap-2">
-              <Button onClick={() => syncNow.mutate()} disabled={syncNow.isPending}>
-                {syncNow.isPending ? "Syncing…" : "Sync Now"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => disconnectGoogle.mutate()}
-                disabled={disconnectGoogle.isPending}
-              >
+    <>
+      <Group
+        title="Account"
+        footer={error ? <span className="text-danger">{error}</span> : "Sign-in happens in your browser. Life OS only gets a Calendar and Tasks token, never your password."}
+      >
+        <SettingRow label="Google Calendar & Tasks" description={isLoading ? "Checking…" : connected ? "Connected" : "Not connected"}>
+          {connected ? (
+            <>
+              <SecondaryButton onClick={() => syncNow.mutate()} disabled={syncNow.isPending}>
+                {syncNow.isPending ? "Syncing…" : "Sync now"}
+              </SecondaryButton>
+              <SecondaryButton onClick={() => disconnectGoogle.mutate()} disabled={disconnectGoogle.isPending}>
                 Disconnect
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-muted-foreground">
-              Not connected. Clicking below opens your browser to sign in — this app never
-              sees your Google password, only a Calendar/Tasks-scoped access token.
-            </p>
-            <Button onClick={() => connectGoogle.mutate()} disabled={connectGoogle.isPending}>
-              {connectGoogle.isPending ? "Waiting for sign-in…" : "Connect Google Account"}
-            </Button>
-          </>
-        )}
-        {connectGoogle.isError && (
-          <p className="text-sm text-destructive">{String(connectGoogle.error)}</p>
-        )}
-        {syncNow.isError && (
-          // A failed sync clears the stored tokens itself when the cause is a
-          // dead refresh token (see oauth::RECONNECT_REQUIRED), which flips
-          // `connected` to false moments after this renders — keeping the
-          // message outside the connected/disconnected branches means it
-          // survives that transition instead of disappearing mid-explanation.
-          <p className="text-sm text-destructive">
-            {String(syncNow.error).includes("GOOGLE_RECONNECT_REQUIRED")
-              ? "Your Google connection expired. Reconnect above to resume sync."
-              : String(syncNow.error)}
-          </p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function GoogleCalendarsSection() {
-  const { data: connected } = useGoogleConnected();
-  const { data: calendars, isLoading, isError, error, refetch } = useCalendarList(!!connected);
-  const { data: prefs } = usePreferences();
-  const setPreference = useSetPreference();
-
-  const selectedIds = useMemo(
-    () => parseSelectedCalendarIds(prefs?.[SELECTED_CALENDARS_PREF_KEY]),
-    [prefs],
-  );
-
-  if (!connected) return null;
-
-  const toggle = (id: string) => {
-    const next = selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id];
-    setPreference.mutate({ key: SELECTED_CALENDARS_PREF_KEY, value: JSON.stringify(next) });
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Google Calendars</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <p className="text-sm text-muted-foreground">
-          Choose which of your Google calendars — including ones shared with you — show up on
-          the Calendar page's grid, alongside your primary calendar.
-        </p>
-        <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()}>
-          {!calendars || calendars.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No calendars found.</p>
+              </SecondaryButton>
+            </>
           ) : (
-            <ul className="space-y-1.5">
-              {calendars.map((cal) => {
-                const isPrimary = !!cal.primary;
-                const checked = isPrimary || selectedIds.includes(cal.id);
-                return (
-                  <li key={cal.id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="size-4"
-                      checked={checked}
-                      disabled={isPrimary}
-                      onChange={() => toggle(cal.id)}
-                    />
-                    <span
-                      className="size-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: cal.background_color ?? "var(--muted-foreground)" }}
-                    />
-                    <span>{cal.summary ?? cal.id}</span>
-                    {isPrimary && <span className="text-xs text-muted-foreground">(primary, always shown)</span>}
-                  </li>
-                );
-              })}
-            </ul>
+            <PrimaryButton onClick={() => connectGoogle.mutate()} disabled={connectGoogle.isPending}>
+              {connectGoogle.isPending ? "Waiting for sign-in…" : "Connect"}
+            </PrimaryButton>
           )}
-        </QueryBoundary>
-      </CardContent>
-    </Card>
+        </SettingRow>
+        <SettingRow label="Full sync every" description="Edits push within about a second either way." htmlFor="pref-sync">
+          <TextPref id="pref-sync" prefKey="sync_interval_minutes" width="w-16" />
+          <span className="text-sm text-fg3">min</span>
+        </SettingRow>
+      </Group>
+
+      {connected && calendars && calendars.length > 0 && (
+        <Group title="Calendars shown" footer="These appear on the Calendar page and the Day ring alongside your primary calendar.">
+          {calendars.map((cal) => {
+            const checked = !!cal.primary || selectedIds.includes(cal.id);
+            return (
+              <label key={cal.id} className="flex min-h-[48px] items-center gap-3 px-4 text-[14.5px]">
+                <Dot color={cal.background_color ?? "#8e8e8a"} square={false} />
+                <span className="min-w-0 flex-1 truncate">
+                  {cal.summary ?? cal.id}
+                  {cal.primary && <span className="text-fg3"> · primary</span>}
+                </span>
+                <Switch
+                  aria-label={cal.summary ?? cal.id}
+                  checked={checked}
+                  disabled={!!cal.primary}
+                  onCheckedChange={() => {
+                    const next = selectedIds.includes(cal.id) ? selectedIds.filter((x) => x !== cal.id) : [...selectedIds, cal.id];
+                    set(SELECTED_CALENDARS_PREF_KEY, JSON.stringify(next));
+                  }}
+                />
+              </label>
+            );
+          })}
+        </Group>
+      )}
+    </>
   );
 }
 
-function ContextManagementSection() {
-  const { data: contexts, isLoading, isError, error, refetch } = useContexts();
-  const updateContext = useUpdateContext();
+function Notifications() {
+  const { get, set } = usePref();
+  const { settings, setWindowDays, setPriorityOverrideEnabled, setRepeatDailyEnabled } = useUpcomingNotificationSettings();
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Categories & Contexts</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={() => refetch()}>
-        {!contexts || contexts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No Contexts yet.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="border-b px-2 py-1">Type</th>
-                <th className="border-b px-2 py-1">Name</th>
-                <th className="border-b px-2 py-1">Status</th>
-                <th className="border-b px-2 py-1" />
-              </tr>
-            </thead>
-            <tbody>
-              {contexts.map((c) => (
-                <tr key={c.id} className="border-b">
-                  <td className="px-2 py-1">{c.type}</td>
-                  <td className="px-2 py-1">{c.name}</td>
-                  <td className="px-2 py-1">{c.status}</td>
-                  <td className="px-2 py-1 text-right">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={updateContext.isPending}
-                      onClick={() =>
-                        updateContext.mutate({
-                          ...c,
-                          status: c.status === "Active" ? "Archived" : "Active",
-                        })
-                      }
-                    >
-                      {c.status === "Active" ? "Archive" : "Reactivate"}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        </QueryBoundary>
-      </CardContent>
-    </Card>
-  );
-}
-
-function pref(prefs: Record<string, string> | undefined, key: keyof typeof NOTIFICATION_DEFAULTS): string {
-  return prefs?.[key] ?? NOTIFICATION_DEFAULTS[key];
-}
-
-function NotificationPreferencesSection() {
-  const { data: prefs } = usePreferences();
-  const setPreference = useSetPreference();
-
-  const boolPref = (key: keyof typeof NOTIFICATION_DEFAULTS) => pref(prefs, key) === "true";
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Notification Preferences</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Label>Morning Briefing</Label>
-            <p className="text-xs text-muted-foreground">Daily summary of what's due today.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="time"
-              className="w-28"
-              value={pref(prefs, "morning_briefing_time")}
-              onChange={(e) => setPreference.mutate({ key: "morning_briefing_time", value: e.target.value })}
-            />
-            <Switch
-              checked={boolPref("morning_briefing_enabled")}
-              onCheckedChange={(checked) =>
-                setPreference.mutate({ key: "morning_briefing_enabled", value: String(checked) })
-              }
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Label>Evening Review</Label>
-            <p className="text-xs text-muted-foreground">Daily prompt to review and plan ahead.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="time"
-              className="w-28"
-              value={pref(prefs, "evening_review_time")}
-              onChange={(e) => setPreference.mutate({ key: "evening_review_time", value: e.target.value })}
-            />
-            <Switch
-              checked={boolPref("evening_review_enabled")}
-              onCheckedChange={(checked) =>
-                setPreference.mutate({ key: "evening_review_enabled", value: String(checked) })
-              }
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Label>Weekly Planning</Label>
-            <p className="text-xs text-muted-foreground">Weekly reminder to plan the week ahead.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select
-              value={pref(prefs, "weekly_planning_day")}
-              onValueChange={(v) => setPreference.mutate({ key: "weekly_planning_day", value: v })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {WEEKDAY_LABELS.map((label, i) => (
-                  <SelectItem key={label} value={String(i)}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              type="time"
-              className="w-28"
-              value={pref(prefs, "weekly_planning_time")}
-              onChange={(e) => setPreference.mutate({ key: "weekly_planning_time", value: e.target.value })}
-            />
-            <Switch
-              checked={boolPref("weekly_planning_enabled")}
-              onCheckedChange={(checked) =>
-                setPreference.mutate({ key: "weekly_planning_enabled", value: String(checked) })
-              }
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Label>Upcoming Deadline</Label>
-            <p className="text-xs text-muted-foreground">Lead time before a due date to warn ahead of it.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={1}
-              className="w-20"
-              value={pref(prefs, "upcoming_deadline_lead_hours")}
-              onChange={(e) =>
-                setPreference.mutate({ key: "upcoming_deadline_lead_hours", value: e.target.value })
-              }
-            />
-            <span className="text-sm text-muted-foreground">hours before</span>
-            <Switch
-              checked={boolPref("upcoming_deadline_enabled")}
-              onCheckedChange={(checked) =>
-                setPreference.mutate({ key: "upcoming_deadline_enabled", value: String(checked) })
-              }
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Label>Overdue</Label>
-            <p className="text-xs text-muted-foreground">Fires once when a due date passes uncompleted.</p>
-          </div>
-          <Switch
-            checked={boolPref("overdue_enabled")}
-            onCheckedChange={(checked) => setPreference.mutate({ key: "overdue_enabled", value: String(checked) })}
-          />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function UpcomingNotificationsSection() {
-  const { settings, setWindowDays, setPriorityOverrideEnabled, setRepeatDailyEnabled } =
-    useUpcomingNotificationSettings();
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Upcoming Notifications</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          The dashboard's in-app notification center — what it proactively surfaces when you open
-          it, separate from the OS notifications above.
-        </p>
-
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Label>Notification window</Label>
-            <p className="text-xs text-muted-foreground">How far ahead to surface upcoming items.</p>
-          </div>
-          <Select
-            value={String(settings.windowDays)}
-            onValueChange={(v) => setWindowDays(Number(v) as NotificationWindowDays)}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {NOTIFICATION_WINDOW_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={String(opt.value)}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Label>Priority reminders</Label>
-            <p className="text-xs text-muted-foreground">
-              Let high-priority items notify earlier than the window above.
-            </p>
-          </div>
-          <Switch
-            checked={settings.priorityOverrideEnabled}
-            onCheckedChange={(checked) => setPriorityOverrideEnabled(checked)}
-          />
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Label>Repeated reminders</Label>
-            <p className="text-xs text-muted-foreground">
-              Keep re-notifying about high-priority items daily while they're incomplete.
-            </p>
-          </div>
-          <Select
-            value={settings.repeatDailyEnabled ? "daily" : "off"}
-            onValueChange={(v) => setRepeatDailyEnabled(v === "daily")}
-          >
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="off">Off</SelectItem>
-              <SelectItem value="daily">Daily</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SyncIntervalSection() {
-  const { data: prefs } = usePreferences();
-  const setPreference = useSetPreference();
-  const [localValue, setLocalValue] = useState<string | null>(null);
-
-  const value = localValue ?? pref(prefs, "sync_interval_minutes");
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Sync Interval</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center gap-2">
-          <Input
+    <>
+      <Group title="Windows notifications">
+        <SettingRow label="Morning briefing" description="What’s due today.">
+          <input type="time" aria-label="Morning briefing time" value={get("morning_briefing_time")} onChange={(e) => set("morning_briefing_time", e.target.value)} className={pill} />
+          <BoolPref prefKey="morning_briefing_enabled" label="Morning briefing" />
+        </SettingRow>
+        <SettingRow label="Evening review" description="A nudge to plan tomorrow.">
+          <input type="time" aria-label="Evening review time" value={get("evening_review_time")} onChange={(e) => set("evening_review_time", e.target.value)} className={pill} />
+          <BoolPref prefKey="evening_review_enabled" label="Evening review" />
+        </SettingRow>
+        <SettingRow label="Weekly planning">
+          <select aria-label="Weekly planning day" value={get("weekly_planning_day")} onChange={(e) => set("weekly_planning_day", e.target.value)} className={pill}>
+            {WEEKDAY_LABELS.map((label, i) => (
+              <option key={label} value={String(i)}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <input type="time" aria-label="Weekly planning time" value={get("weekly_planning_time")} onChange={(e) => set("weekly_planning_time", e.target.value)} className={pill} />
+          <BoolPref prefKey="weekly_planning_enabled" label="Weekly planning" />
+        </SettingRow>
+        <SettingRow label="Before a deadline">
+          <input
             type="number"
             min={1}
-            className="w-20"
-            value={value}
-            onChange={(e) => setLocalValue(e.target.value)}
-            onBlur={() => {
-              setPreference.mutate({ key: "sync_interval_minutes", value });
-              setLocalValue(null);
-            }}
+            aria-label="Hours before deadline"
+            value={get("upcoming_deadline_lead_hours")}
+            onChange={(e) => set("upcoming_deadline_lead_hours", e.target.value)}
+            className={cn(pill, "w-16")}
           />
-          <span className="text-sm text-muted-foreground">minutes between full Google syncs</span>
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Edits to a synced item are also pushed within about a second, whether or not this
-          interval has elapsed — this just controls the periodic full pull/push safety net. Takes
-          effect once Google Calendar/Tasks sync is connected.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
+          <span className="text-sm text-fg3">hours</span>
+          <BoolPref prefKey="upcoming_deadline_enabled" label="Before a deadline" />
+        </SettingRow>
+        <SettingRow label="When something becomes overdue">
+          <BoolPref prefKey="overdue_enabled" label="Overdue" />
+        </SettingRow>
+      </Group>
 
-function BackupSection() {
-  const { data: prefs } = usePreferences();
-  const setPreference = useSetPreference();
-  const backupNow = useBackupNow();
-  const syncFromBackup = useSyncFromBackup();
-  const [localValue, setLocalValue] = useState<string | null>(null);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
-
-  const folderPath = localValue ?? pref(prefs, "backup_folder_path");
-  const lastBackupAt = prefs?.["last_backup_at"];
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Backup</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <p className="text-sm text-muted-foreground">
-          There's no cloud backend by design, so life-os.sqlite3 is the only copy of everything.
-          Point this at a folder synced by Drive, Dropbox, OneDrive, etc. and a snapshot gets
-          written there roughly 5 minutes after you stop editing (and at least once a day
-          either way). Point another device's Life OS at the same folder and it'll offer to load
-          the newer snapshot next time it checks — that's also how to move everything to a new
-          device.
-        </p>
-        <div className="flex items-center gap-2">
-          <Input
-            value={folderPath}
-            placeholder="e.g. C:\\Users\\you\\Google Drive\\LifeOS Backups"
-            onChange={(e) => setLocalValue(e.target.value)}
-            onBlur={() => {
-              setPreference.mutate({ key: "backup_folder_path", value: folderPath });
-              setLocalValue(null);
-            }}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={() => backupNow.mutate()} disabled={backupNow.isPending || !folderPath.trim()}>
-            {backupNow.isPending ? "Backing up…" : "Backup Now"}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setSyncMessage(null);
-              syncFromBackup.mutate(undefined, {
-                onSuccess: (result) => {
-                  if (!result.synced) {
-                    setSyncMessage("Already up to date — no newer backup found in that folder.");
-                  }
-                },
-              });
-            }}
-            disabled={syncFromBackup.isPending || !folderPath.trim()}
+      <Group title="On Today" footer="The “coming up” card at the top of Today. Each task shows once a day until you dismiss it.">
+        <SettingRow label="Look ahead">
+          <select
+            aria-label="Look ahead"
+            value={String(settings.windowDays)}
+            onChange={(e) => setWindowDays(Number(e.target.value) as NotificationWindowDays)}
+            className={pill}
           >
-            {syncFromBackup.isPending ? "Checking…" : "Sync"}
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            {lastBackupAt ? `Last backup: ${new Date(lastBackupAt).toLocaleString()}` : "No backup yet"}
-          </span>
-        </div>
-        {backupNow.isError && (
-          <p className="text-sm text-destructive">{String(backupNow.error)}</p>
-        )}
-        {syncFromBackup.isError && (
-          <p className="text-sm text-destructive">{String(syncFromBackup.error)}</p>
-        )}
-        {syncMessage && <p className="text-sm text-muted-foreground">{syncMessage}</p>}
-      </CardContent>
-    </Card>
+            {NOTIFICATION_WINDOW_OPTIONS.map((opt) => (
+              <option key={opt.value} value={String(opt.value)}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </SettingRow>
+        <SettingRow label="High priority shows earlier">
+          <Switch aria-label="High priority shows earlier" checked={settings.priorityOverrideEnabled} onCheckedChange={setPriorityOverrideEnabled} />
+        </SettingRow>
+        <SettingRow label="Repeat high priority daily">
+          <Switch aria-label="Repeat high priority daily" checked={settings.repeatDailyEnabled} onCheckedChange={setRepeatDailyEnabled} />
+        </SettingRow>
+      </Group>
+    </>
   );
 }
 
-function ObsidianVaultSection() {
-  const { data: prefs } = usePreferences();
-  const setPreference = useSetPreference();
+function Obsidian() {
+  const { prefs, get } = usePref();
   const testVault = useTestObsidianVault();
-  const [localValue, setLocalValue] = useState<string | null>(null);
-
-  const vaultPath = localValue ?? pref(prefs, "obsidian_vault_path");
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Obsidian Vault</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <p className="text-sm text-muted-foreground">
-          Point this at your Obsidian vault's folder to search and preview its notes from the
-          Search palette (Ctrl/Cmd+K), alongside your Life OS items and notes.
-        </p>
-        <div className="flex items-center gap-2">
-          <Input
-            value={vaultPath}
-            placeholder="e.g. C:\\Users\\you\\Documents\\MyVault"
-            onChange={(e) => {
-              setLocalValue(e.target.value);
-              testVault.reset();
-            }}
-            onBlur={() => {
-              setPreference.mutate({ key: "obsidian_vault_path", value: vaultPath });
-              setLocalValue(null);
-            }}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => testVault.mutate(vaultPath)}
-            disabled={testVault.isPending || !vaultPath.trim()}
-          >
-            {testVault.isPending ? "Checking…" : "Test Connection"}
-          </Button>
-          {testVault.data && (
-            <span className={testVault.data.valid ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>
-              {testVault.data.valid
-                ? `Found ${testVault.data.note_count} note${testVault.data.note_count === 1 ? "" : "s"}.`
-                : testVault.data.error}
-            </span>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ObsidianTaskScannerSection() {
-  const { data: prefs } = usePreferences();
-  const setPreference = useSetPreference();
   const scanTasks = useScanObsidianTasks();
-  const [localFolder, setLocalFolder] = useState<string | null>(null);
-
-  const vaultPath = pref(prefs, "obsidian_vault_path");
-  const scanFolder = localFolder ?? pref(prefs, "obsidian_scan_folder");
+  const vaultPath = get("obsidian_vault_path");
   const lastScanAt = prefs?.["obsidian_scan_last_at"];
-  const lastSummary = useMemo(() => {
-    const raw = prefs?.["obsidian_scan_last_summary"];
-    if (!raw) return null;
+  const summary = useMemo(() => {
     try {
-      return JSON.parse(raw) as {
+      return JSON.parse(prefs?.["obsidian_scan_last_summary"] ?? "null") as {
         files_scanned: number;
-        actionable_sections_found: number;
         tasks_found: number;
         new_tasks: number;
-        existing_tasks: number;
         completed_source_tasks: number;
         errors: string[];
         error: string | null;
-      };
+      } | null;
     } catch {
       return null;
     }
   }, [prefs]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Obsidian Task Scanner</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Scans Markdown files in one folder of your Obsidian vault for <code>## Next Steps</code> and{" "}
-          <code>## Action Items</code> sections and imports their unchecked <code>- [ ]</code> checkboxes as
-          dashboard tasks. Purely deterministic — no AI, no interpretation of prose. Re-scanning never creates
-          duplicates, and checking a box in Obsidian marks the matching dashboard task Completed.
-        </p>
+    <>
+      <Group
+        title="Vault"
+        footer={
+          testVault.data ? (
+            <span className={testVault.data.valid ? undefined : "text-danger"}>
+              {testVault.data.valid ? `Found ${testVault.data.note_count} notes.` : testVault.data.error}
+            </span>
+          ) : (
+            "Notes from your vault show up in Ctrl K search."
+          )
+        }
+      >
+        <SettingRow label="Vault folder" htmlFor="pref-vault">
+          <TextPref id="pref-vault" prefKey="obsidian_vault_path" placeholder="C:\Users\you\Documents\Vault" width="w-72" align="left" />
+          <SecondaryButton onClick={() => testVault.mutate(vaultPath)} disabled={testVault.isPending || !vaultPath.trim()}>
+            {testVault.isPending ? "Checking…" : "Test"}
+          </SecondaryButton>
+        </SettingRow>
+      </Group>
 
-        <div>
-          <Label>Vault</Label>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {vaultPath || "Not configured — set it in Obsidian Vault above first."}
-          </p>
-        </div>
-
-        <div>
-          <Label>Scan folder</Label>
-          <p className="mb-1 text-xs text-muted-foreground">Relative to the vault above, e.g. s3-Fall26.</p>
-          <Input
-            className="w-56"
-            value={scanFolder}
-            onChange={(e) => setLocalFolder(e.target.value)}
-            onBlur={() => {
-              setPreference.mutate({ key: "obsidian_scan_folder", value: scanFolder });
-              setLocalFolder(null);
-            }}
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button onClick={() => scanTasks.mutate()} disabled={scanTasks.isPending || !vaultPath.trim()}>
-            {scanTasks.isPending ? "Scanning…" : "Scan Now"}
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            {lastScanAt ? `Last scanned: ${new Date(lastScanAt).toLocaleString()}` : "Never scanned"}
-          </span>
-        </div>
-
-        {scanTasks.isError && <p className="text-sm text-destructive">{String(scanTasks.error)}</p>}
-
-        {lastSummary?.error && <p className="text-sm text-destructive">{lastSummary.error}</p>}
-
-        {lastSummary && !lastSummary.error && (
-          <div className="rounded-md border p-3 text-xs text-muted-foreground">
-            <div>Files scanned: {lastSummary.files_scanned}</div>
-            <div>Actionable sections found: {lastSummary.actionable_sections_found}</div>
-            <div>Tasks found: {lastSummary.tasks_found}</div>
-            <div>New tasks: {lastSummary.new_tasks}</div>
-            <div>Existing tasks: {lastSummary.existing_tasks}</div>
-            <div>Completed source tasks: {lastSummary.completed_source_tasks}</div>
-            <div>Errors: {lastSummary.errors.length}</div>
-            {lastSummary.errors.length > 0 && (
-              <ul className="mt-1 list-disc pl-4">
-                {lastSummary.errors.map((err) => (
-                  <li key={err}>{err}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      <Group
+        title="Task scanner"
+        footer="Imports unchecked “- [ ]” items under “## Next Steps” and “## Action Items” headings into a Personal list called Obsidian. Re-scans never duplicate, and ticking a box in Obsidian completes the task here."
+      >
+        <SettingRow label="Folder to scan" description="Relative to the vault." htmlFor="pref-scan">
+          <TextPref id="pref-scan" prefKey="obsidian_scan_folder" width="w-44" />
+        </SettingRow>
+        <SettingRow
+          label="Scan now"
+          description={
+            scanTasks.isError ? (
+              <span className="text-danger">{String(scanTasks.error)}</span>
+            ) : summary?.error ? (
+              <span className="text-danger">{summary.error}</span>
+            ) : summary && lastScanAt ? (
+              `${new Date(lastScanAt).toLocaleString()} · ${summary.files_scanned} files · ${summary.new_tasks} new · ${summary.completed_source_tasks} completed${summary.errors.length ? ` · ${summary.errors.length} errors` : ""}`
+            ) : (
+              "Never scanned"
+            )
+          }
+        >
+          <SecondaryButton onClick={() => scanTasks.mutate()} disabled={scanTasks.isPending || !vaultPath.trim()}>
+            {scanTasks.isPending ? "Scanning…" : "Scan"}
+          </SecondaryButton>
+        </SettingRow>
+      </Group>
+    </>
   );
 }
 
-function ThemeSection() {
-  const { theme, setTheme } = useTheme();
+function Backup() {
+  const { prefs, get } = usePref();
+  const backupNow = useBackupNow();
+  const syncFromBackup = useSyncFromBackup();
+  const [message, setMessage] = useState<string | null>(null);
+  const folder = get("backup_folder_path");
+  const lastBackupAt = prefs?.["last_backup_at"];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Theme</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex gap-1">
-          {THEME_OPTIONS.map((option) => (
-            <Button
-              key={option.value}
-              size="sm"
-              variant={theme === option.value ? "default" : "outline"}
-              onClick={() => setTheme(option.value)}
-            >
-              {option.label}
-            </Button>
-          ))}
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          "System" follows your OS's light/dark setting and updates automatically if it changes.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AutostartSection() {
-  const { data: enabled, isLoading } = useAutostartEnabled();
-  const setAutostart = useSetAutostart();
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Start with Windows</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-sm text-muted-foreground">
-            Launch Life OS minimized to the tray at login, so Morning Briefing and other
-            scheduled notifications still fire on days you don't open the app yourself.
-          </p>
-          <Switch
-            checked={!!enabled}
-            disabled={isLoading || setAutostart.isPending}
-            onCheckedChange={(checked) => setAutostart.mutate(checked)}
-          />
-        </div>
-        {setAutostart.isError && (
-          <p className="mt-2 text-sm text-destructive">{String(setAutostart.error)}</p>
-        )}
-      </CardContent>
-    </Card>
+    <Group
+      title="Backup"
+      footer={
+        backupNow.isError || syncFromBackup.isError ? (
+          <span className="text-danger">{String(backupNow.error ?? syncFromBackup.error)}</span>
+        ) : (
+          message ??
+          "Everything lives in one local file. Point this at a Drive, Dropbox or OneDrive folder and a snapshot is saved about 5 minutes after you stop editing (and daily). Another device pointed at the same folder will offer to load it."
+        )
+      }
+    >
+      <SettingRow label="Backup folder" htmlFor="pref-backup">
+        <TextPref id="pref-backup" prefKey="backup_folder_path" placeholder="C:\Users\you\Google Drive\Life OS" width="w-80" align="left" />
+      </SettingRow>
+      <SettingRow label="Last backup" description={lastBackupAt ? new Date(lastBackupAt).toLocaleString() : "None yet"}>
+        <SecondaryButton onClick={() => backupNow.mutate()} disabled={backupNow.isPending || !folder.trim()}>
+          {backupNow.isPending ? "Backing up…" : "Back up now"}
+        </SecondaryButton>
+        <SecondaryButton
+          disabled={syncFromBackup.isPending || !folder.trim()}
+          onClick={() => {
+            setMessage(null);
+            syncFromBackup.mutate(undefined, { onSuccess: (r) => !r.synced && setMessage("Already up to date — no newer backup in that folder.") });
+          }}
+        >
+          {syncFromBackup.isPending ? "Checking…" : "Load newer"}
+        </SecondaryButton>
+      </SettingRow>
+    </Group>
   );
 }
 
 export default function Settings() {
+  const [params, setParams] = useSearchParams();
+  const section = (SECTIONS.find((s) => s.id === params.get("section"))?.id ?? "general") as Section;
+
   return (
-    <div className="max-w-2xl space-y-6 p-8">
-      <h1 className="text-2xl font-semibold">Settings</h1>
-      <ProfileSection />
-      <GoogleAccountSection />
-      <GoogleCalendarsSection />
-      <ContextManagementSection />
-      <NotificationPreferencesSection />
-      <UpcomingNotificationsSection />
-      <SyncIntervalSection />
-      <BackupSection />
-      <ObsidianVaultSection />
-      <ObsidianTaskScannerSection />
-      <AutostartSection />
-      <ThemeSection />
+    <div className="flex min-h-full flex-col">
+      <TopBar>Settings</TopBar>
+      <div className="flex flex-wrap items-start">
+        <nav aria-label="Settings sections" className="flex w-full flex-col gap-0.5 px-4 pb-4 pt-10 sm:w-[230px] sm:pl-7">
+          <h1 className="mb-4 ml-2.5 text-[28px] font-semibold tracking-[-0.02em]">Settings</h1>
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setParams(s.id === "general" ? {} : { section: s.id }, { replace: true })}
+              className={cn(
+                "flex h-9 items-center justify-between rounded-lg px-2.5 text-left text-sm",
+                section === s.id ? "bg-hover font-medium" : "text-fg2 hover:bg-hover",
+              )}
+            >
+              {s.label}
+              {section === s.id && <ChevronRight className="size-3.5 text-fg3" />}
+            </button>
+          ))}
+        </nav>
+        <div className="flex min-w-0 max-w-[720px] flex-[999_1_480px] flex-col gap-7 px-6 pb-14 sm:pt-[104px]">
+          {section === "general" && <General />}
+          {section === "google" && <Google />}
+          {section === "notifications" && <Notifications />}
+          {section === "obsidian" && <Obsidian />}
+          {section === "backup" && <Backup />}
+          <p className="ml-1 text-[12.5px] text-fg3">Life OS {__APP_VERSION__}</p>
+        </div>
+      </div>
     </div>
   );
 }

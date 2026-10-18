@@ -1,144 +1,181 @@
-import { NavLink } from "react-router-dom";
-import {
-  BarChart3,
-  Briefcase,
-  CalendarDays,
-  Dumbbell,
-  GraduationCap,
-  Inbox,
-  LayoutDashboard,
-  ListTodo,
-  Monitor,
-  Moon,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Search,
-  Settings,
-  Sun,
-  Timer,
-  User,
-  Zap,
-} from "lucide-react";
-import { useTheme } from "@/hooks/useTheme";
+import { useMemo, useState } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { BarChart3, CalendarDays, CircleCheck, Plus, Search, SlidersHorizontal, Sun, Timer } from "lucide-react";
+import { Dot, Kbd } from "@/components/lo/primitives";
+import { ClassDialog } from "@/components/school/ClassDialog";
+import { useContexts } from "@/hooks/useContexts";
+import { useGoogleConnected, useItemSyncStatuses, useSyncConflicts } from "@/hooks/useGoogle";
+import { useItems } from "@/hooks/useItems";
+import { usePreferences } from "@/hooks/usePreferences";
+import { activeClasses, PERSONAL_HEX, personalLists } from "@/lib/areas";
+import { classColorHex } from "@/lib/classColors";
+import { formatClock, remainingSeconds } from "@/lib/focusTiming";
 import { cn } from "@/lib/utils";
+import { useFocusStore } from "@/store/focusStore";
 import { useSearchStore } from "@/store/searchStore";
-import { useSidebarStore } from "@/store/sidebarStore";
-import type { Theme } from "@/store/themeStore";
 
-const THEME_CYCLE: Record<Theme, Theme> = {
-  light: "dark",
-  dark: "system",
-  system: "futuristic",
-  futuristic: "light",
-};
-const THEME_ICON: Record<Theme, typeof Sun> = { light: Sun, dark: Moon, system: Monitor, futuristic: Zap };
-const THEME_LABEL: Record<Theme, string> = {
-  light: "Light theme",
-  dark: "Dark theme",
-  system: "Matching system theme",
-  futuristic: "Futuristic theme",
-};
+const navItemClass = (active: boolean) =>
+  cn(
+    "flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors [&_svg]:size-[18px] [&_svg]:shrink-0",
+    active ? "bg-hover font-medium text-foreground" : "text-fg2 hover:bg-hover hover:text-foreground",
+  );
 
-const NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/focus", label: "Focus", icon: Timer, end: false },
-  { to: "/inbox", label: "Inbox", icon: Inbox, end: false },
-  { to: "/master-list", label: "Master List", icon: ListTodo, end: false },
-  { to: "/school", label: "School", icon: GraduationCap, end: false },
-  { to: "/work", label: "Work", icon: Briefcase, end: false },
-  { to: "/gym", label: "Gym", icon: Dumbbell, end: false },
-  { to: "/personal", label: "Personal", icon: User, end: false },
-  { to: "/calendar", label: "Calendar", icon: CalendarDays, end: false },
-  { to: "/statistics", label: "Statistics", icon: BarChart3, end: false },
-  { to: "/settings", label: "Settings", icon: Settings, end: false },
-] as const;
+const subItemClass = (active: boolean) =>
+  cn(
+    "flex h-[34px] items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors",
+    active ? "bg-hover font-medium text-foreground" : "text-fg2 hover:bg-hover hover:text-foreground",
+  );
+
+function FocusBadge() {
+  const session = useFocusStore((s) => s.session);
+  useFocusStore((s) => s.tick);
+  if (!session) return null;
+  const remaining = remainingSeconds(session, new Date());
+  return (
+    <span className="ml-auto flex items-center gap-1.5 font-mono text-[11px] font-normal text-success">
+      <span className={cn("size-1.5 rounded-full bg-success", session.running_since && "animate-pulse")} />
+      {session.phase === "break" ? "Break" : remaining === null ? "Open" : formatClock(remaining)}
+    </span>
+  );
+}
+
+function SyncFooter() {
+  const { data: connected } = useGoogleConnected();
+  const { data: statuses } = useItemSyncStatuses(!!connected);
+  const { data: conflicts } = useSyncConflicts();
+  const issues = (statuses ?? []).filter((s) => s.status === "failed").length + (connected ? (conflicts?.length ?? 0) : 0);
+
+  let tone = "bg-fg3";
+  let label = "Google not connected";
+  if (connected) {
+    tone = issues > 0 ? "bg-danger" : "bg-success";
+    label = issues > 0 ? `${issues} sync issue${issues === 1 ? "" : "s"}` : "Google sync on";
+  }
+  return (
+    <Link to={connected ? "/" : "/settings?section=google"} className="flex items-center gap-2 px-2.5 pt-2 text-xs text-fg3 hover:text-fg2">
+      <span className={cn("size-[7px] rounded-full", tone)} />
+      {label}
+    </Link>
+  );
+}
 
 export function Sidebar() {
-  const { theme, setTheme } = useTheme();
   const openSearch = useSearchStore((s) => s.open);
-  const collapsed = useSidebarStore((s) => s.collapsed);
-  const toggleCollapsed = useSidebarStore((s) => s.toggle);
-  const ThemeIcon = THEME_ICON[theme];
+  const { data: contexts } = useContexts();
+  const { data: items } = useItems();
+  const { data: prefs } = usePreferences();
+  const location = useLocation();
+  const [classDialogOpen, setClassDialogOpen] = useState(false);
+
+  const classes = activeClasses(contexts);
+  const lists = useMemo(() => personalLists(items).filter((l) => l.open > 0), [items]);
+  const openCount = (items ?? []).filter((i) => i.status !== "Completed").length;
+  const params = new URLSearchParams(location.search);
+  const onTasks = location.pathname === "/tasks";
+  const activeList = onTasks ? params.get("list") : null;
+  const activeArea = onTasks ? params.get("area") : null;
+  const name = prefs?.user_name?.trim() || "Life OS";
 
   return (
-    <aside
-      className={cn(
-        "shrink-0 border-r border-[color:var(--glass-border)] bg-sidebar/55 text-sidebar-foreground shadow-[4px_0_32px_-12px_var(--glass-shadow)] backdrop-blur-xl backdrop-saturate-150 flex flex-col transition-[width] duration-200",
-        collapsed ? "w-14" : "w-56",
-      )}
-    >
-      <div className={cn("flex items-center py-4", collapsed ? "justify-center px-2" : "justify-between px-4")}>
-        {!collapsed && <span className="font-heading text-lg font-semibold">Life OS</span>}
+    <aside className="flex w-[240px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-line bg-sidebar px-2.5 py-3.5">
+      <div className="flex items-center gap-2.5 px-2.5 pb-3.5 pt-1.5">
+        <div className="flex size-[26px] items-center justify-center rounded-lg bg-foreground">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="stroke-background">
+            <circle cx="12" cy="12" r="8" strokeWidth="3" strokeDasharray="34 50" strokeLinecap="round" />
+          </svg>
+        </div>
+        <div className="flex min-w-0 flex-col leading-tight">
+          <span className="text-sm font-semibold">Life OS</span>
+          <span className="truncate text-xs text-fg3">{name}</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => openSearch()}
+        className="mb-2.5 flex h-9 items-center gap-2.5 rounded-lg border border-line bg-card px-2.5 text-sm text-fg2 transition-colors hover:bg-hover"
+      >
+        <Search className="size-4 shrink-0" />
+        <span className="flex-1 text-left">Search or add</span>
+        <Kbd>Ctrl K</Kbd>
+      </button>
+
+      <NavLink to="/" end className={({ isActive }) => navItemClass(isActive)}>
+        <Sun />
+        Today
+      </NavLink>
+      <NavLink to="/tasks" className={() => navItemClass(onTasks && !activeList && !activeArea)}>
+        <CircleCheck />
+        <span className="flex-1">Tasks</span>
+        {openCount > 0 && <span className="text-xs font-normal text-fg3">{openCount}</span>}
+      </NavLink>
+      <NavLink to="/calendar" className={({ isActive }) => navItemClass(isActive)}>
+        <CalendarDays />
+        Calendar
+      </NavLink>
+      <NavLink to="/focus" className={({ isActive }) => navItemClass(isActive)}>
+        <Timer />
+        Focus
+        <FocusBadge />
+      </NavLink>
+      <NavLink to="/stats" className={({ isActive }) => navItemClass(isActive)}>
+        <BarChart3 />
+        Stats
+      </NavLink>
+
+      <div className="flex items-center justify-between px-2.5 pb-1.5 pt-5">
+        <Link to="/tasks?area=School" className="lo-label hover:text-fg2">
+          School
+        </Link>
         <button
           type="button"
-          onClick={() => setTheme(THEME_CYCLE[theme])}
-          title={`${THEME_LABEL[theme]} — click to cycle`}
-          className="rounded-md p-1.5 text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground hover:backdrop-blur-sm"
+          aria-label="New class"
+          onClick={() => setClassDialogOpen(true)}
+          className="flex size-6 items-center justify-center rounded-md text-fg3 hover:bg-hover hover:text-foreground"
         >
-          <ThemeIcon className="size-4" />
+          <Plus className="size-3.5" />
         </button>
       </div>
-      <div className="px-2 pb-2">
-        <button
-          type="button"
-          onClick={openSearch}
-          title={collapsed ? "Search — Ctrl K" : undefined}
-          className={cn(
-            "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
-            collapsed && "justify-center px-0",
-          )}
-        >
-          <Search className="size-4 shrink-0" />
-          {!collapsed && (
-            <>
-              <span className="flex-1 text-left">Search</span>
-              <kbd className="rounded border border-[color:var(--glass-border)] px-1 py-0.5 text-[10px] text-sidebar-foreground/50">
-                Ctrl K
-              </kbd>
-            </>
-          )}
+      {classes.length === 0 ? (
+        <button type="button" onClick={() => setClassDialogOpen(true)} className="px-2.5 py-1.5 text-left text-sm text-fg3 hover:text-fg2">
+          Add your first class
         </button>
-      </div>
-      <nav className="flex-1 px-2 space-y-1">
-        {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            title={collapsed ? label : undefined}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
-                collapsed && "justify-center px-0",
-                isActive
-                  ? "bg-sidebar-accent/70 text-sidebar-accent-foreground shadow-sm ring-1 ring-[color:var(--glass-border)] backdrop-blur-sm"
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
-              )
-            }
-          >
-            <Icon className="size-4 shrink-0" />
-            {!collapsed && label}
+      ) : (
+        classes.map((c) => (
+          <NavLink key={c.id} to={`/school/${c.id}`} className={({ isActive }) => subItemClass(isActive)}>
+            <Dot color={classColorHex(c.color)} />
+            <span className="truncate">{c.name}</span>
           </NavLink>
-        ))}
-      </nav>
-      <div className="px-2 pb-3 pt-1">
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className={cn(
-            "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
-            collapsed && "justify-center px-0",
-          )}
-        >
-          {collapsed ? (
-            <PanelLeftOpen className="size-4 shrink-0" />
-          ) : (
-            <PanelLeftClose className="size-4 shrink-0" />
-          )}
-          {!collapsed && "Collapse"}
-        </button>
+        ))
+      )}
+
+      <div className="px-2.5 pb-1.5 pt-5">
+        <Link to="/tasks?area=Personal" className={cn("lo-label hover:text-fg2", activeArea === "Personal" && "text-foreground")}>
+          Personal
+        </Link>
       </div>
+      {lists.length === 0 ? (
+        <p className="px-2.5 py-1 text-[13px] leading-snug text-fg3">
+          Add <span className="font-mono text-xs">#list</span> to a task to make a list.
+        </p>
+      ) : (
+        lists.map((l) => (
+          <Link key={l.name} to={`/tasks?list=${encodeURIComponent(l.name)}`} className={subItemClass(activeList === l.name)}>
+            <Dot color={PERSONAL_HEX} />
+            <span className="flex-1 truncate">{l.name}</span>
+            <span className="text-xs font-normal text-fg3">{l.open}</span>
+          </Link>
+        ))
+      )}
+
+      <div className="min-h-6 flex-1" />
+      <NavLink to="/settings" className={({ isActive }) => navItemClass(isActive)}>
+        <SlidersHorizontal />
+        Settings
+      </NavLink>
+      <SyncFooter />
+
+      <ClassDialog open={classDialogOpen} onOpenChange={setClassDialogOpen} />
     </aside>
   );
 }

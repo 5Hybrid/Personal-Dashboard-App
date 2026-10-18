@@ -93,6 +93,9 @@ CREATE INDEX IF NOT EXISTS idx_item_subcategory_id ON item(subcategory_id);
 CREATE INDEX IF NOT EXISTS idx_item_due_date ON item(due_date);
 CREATE INDEX IF NOT EXISTS idx_item_deleted_at ON item(deleted_at);
 
+-- LEGACY (v0.3+): the Inbox page and its commands were removed — capture now
+-- goes straight to `item` via the command bar. The table is kept only so
+-- existing databases and older backups stay valid; nothing reads or writes it.
 -- Raw Inbox captures: title + optional freeform text, no category yet.
 -- Kept separate from `item` because item.category is NOT NULL in the locked schema;
 -- an inbox_item is promoted into a real Item (via create_item) by the Process flow,
@@ -127,6 +130,8 @@ CREATE TABLE IF NOT EXISTS quick_note (
   created_at TEXT NOT NULL
 );
 
+-- LEGACY (v0.3+): the Gym page and its commands were removed. Kept only so
+-- existing databases and older backups stay valid; nothing reads or writes it.
 -- Gym Personal Records: keyed to exercise name + current best value, not date-bound,
 -- so (per the build prompt) they don't fit the Item model and get their own table.
 CREATE TABLE IF NOT EXISTS personal_record (

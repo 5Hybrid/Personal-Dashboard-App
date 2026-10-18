@@ -1,7 +1,6 @@
 use crate::db::DbState;
 use crate::models::{
-    Context, ContextInput, InboxItem, InboxItemInput, Item, ItemInput, Note, NoteInput,
-    PersonalRecord, PersonalRecordInput, QuickNote, QuickNoteInput,
+    Context, ContextInput, Item, ItemInput, Note, NoteInput, QuickNote, QuickNoteInput,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use tauri::State;
@@ -14,8 +13,8 @@ pub(crate) fn now() -> String {
 /// Marks `preference.last_activity_at`, which backup.rs's automatic-backup
 /// timer watches to decide when a fresh snapshot is due (see
 /// backup::tick/is_backup_due). Every mutating command below calls this.
-/// Previously that timer instead scanned `item`/`note`/`personal_record`/
-/// `inbox_item`/`quick_note` directly for their most recent timestamp —
+/// Previously that timer instead scanned `item`/`note`/`quick_note`
+/// directly for their most recent timestamp —
 /// `context` (Class/Project/Program) has no timestamp columns of its own, so
 /// it was silently excluded, and creating/editing a class alone never
 /// triggered an automatic backup. An explicit touch on every command sidesteps
@@ -391,63 +390,6 @@ pub fn list_items(state: State<DbState>) -> Result<Vec<Item>, String> {
         .map_err(|e| e.to_string())
 }
 
-fn row_to_inbox_item(row: &Row) -> rusqlite::Result<InboxItem> {
-    Ok(InboxItem {
-        id: row.get("id")?,
-        title: row.get("title")?,
-        notes: row.get("notes")?,
-        created_at: row.get("created_at")?,
-    })
-}
-
-#[tauri::command]
-pub fn create_inbox_item(
-    state: State<DbState>,
-    input: InboxItemInput,
-) -> Result<InboxItem, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let inbox_item = InboxItem {
-        id: Uuid::new_v4().to_string(),
-        title: input.title,
-        notes: input.notes,
-        created_at: now(),
-    };
-    conn.execute(
-        "INSERT INTO inbox_item (id, title, notes, created_at) VALUES (?1,?2,?3,?4)",
-        params![
-            inbox_item.id,
-            inbox_item.title,
-            inbox_item.notes,
-            inbox_item.created_at
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-    touch_activity(&conn);
-    Ok(inbox_item)
-}
-
-#[tauri::command]
-pub fn list_inbox_items(state: State<DbState>) -> Result<Vec<InboxItem>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn
-        .prepare("SELECT id, title, notes, created_at FROM inbox_item ORDER BY created_at ASC")
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], row_to_inbox_item)
-        .map_err(|e| e.to_string())?;
-    rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn delete_inbox_item(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM inbox_item WHERE id=?1", params![id])
-        .map_err(|e| e.to_string())?;
-    touch_activity(&conn);
-    Ok(())
-}
-
 fn row_to_quick_note(row: &Row) -> rusqlite::Result<QuickNote> {
     Ok(QuickNote {
         id: row.get("id")?,
@@ -561,101 +503,6 @@ pub fn list_notes_for_context(
 pub fn delete_note(state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM note WHERE id=?1", params![id])
-        .map_err(|e| e.to_string())?;
-    touch_activity(&conn);
-    Ok(())
-}
-
-fn row_to_personal_record(row: &Row) -> rusqlite::Result<PersonalRecord> {
-    Ok(PersonalRecord {
-        id: row.get("id")?,
-        program_id: row.get("program_id")?,
-        exercise_name: row.get("exercise_name")?,
-        value: row.get("value")?,
-        unit: row.get("unit")?,
-        created_at: row.get("created_at")?,
-        updated_at: row.get("updated_at")?,
-    })
-}
-
-#[tauri::command]
-pub fn create_personal_record(
-    state: State<DbState>,
-    input: PersonalRecordInput,
-) -> Result<PersonalRecord, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let timestamp = now();
-    let record = PersonalRecord {
-        id: Uuid::new_v4().to_string(),
-        program_id: input.program_id,
-        exercise_name: input.exercise_name,
-        value: input.value,
-        unit: input.unit,
-        created_at: timestamp.clone(),
-        updated_at: timestamp,
-    };
-    conn.execute(
-        "INSERT INTO personal_record (id, program_id, exercise_name, value, unit, created_at, updated_at) \
-         VALUES (?1,?2,?3,?4,?5,?6,?7)",
-        params![
-            record.id,
-            record.program_id,
-            record.exercise_name,
-            record.value,
-            record.unit,
-            record.created_at,
-            record.updated_at
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-    touch_activity(&conn);
-    Ok(record)
-}
-
-#[tauri::command]
-pub fn update_personal_record(
-    state: State<DbState>,
-    mut record: PersonalRecord,
-) -> Result<PersonalRecord, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    record.updated_at = now();
-    conn.execute(
-        "UPDATE personal_record SET program_id=?2, exercise_name=?3, value=?4, unit=?5, updated_at=?6 \
-         WHERE id=?1",
-        params![
-            record.id,
-            record.program_id,
-            record.exercise_name,
-            record.value,
-            record.unit,
-            record.updated_at
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-    touch_activity(&conn);
-    Ok(record)
-}
-
-#[tauri::command]
-pub fn list_personal_records(state: State<DbState>) -> Result<Vec<PersonalRecord>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, program_id, exercise_name, value, unit, created_at, updated_at \
-             FROM personal_record ORDER BY exercise_name ASC",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], row_to_personal_record)
-        .map_err(|e| e.to_string())?;
-    rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn delete_personal_record(state: State<DbState>, id: String) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM personal_record WHERE id=?1", params![id])
         .map_err(|e| e.to_string())?;
     touch_activity(&conn);
     Ok(())

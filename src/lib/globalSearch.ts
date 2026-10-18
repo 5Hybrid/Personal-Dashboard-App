@@ -1,34 +1,32 @@
-import type { Context, InboxItem, Item, Note, ObsidianNote, PersonalRecord, QuickNote } from "@/types";
+import { itemContextInfo } from "@/lib/areas";
+import type { Context, Item, Note, ObsidianNote, QuickNote } from "@/types";
 
-export type SearchResultType = "item" | "context" | "note" | "quickNote" | "inbox" | "record" | "obsidian";
+export type SearchResultType = "item" | "context" | "note" | "quickNote" | "obsidian";
 
 export interface SearchResult {
   key: string;
   type: SearchResultType;
   title: string;
   subtitle: string | null;
+  /** Route to open, for results that live on a page. */
   path: string;
-  category: Item["category"] | null;
+  /** Set on "item" results — opening one shows the task's side peek. */
+  itemId?: string;
+  /** Dot color shown beside the result (class / Personal). */
+  color?: string;
   haystack: string;
-  // Vault-relative path, set only on "obsidian" results — selecting one
-  // shows an inline preview (via useObsidianNote) instead of navigating,
-  // since there's no in-app route for a vault note.
+  /** Vault-relative path, set only on "obsidian" results (previewed inline). */
   vaultPath?: string;
 }
 
 export const SEARCH_GROUP_LABEL: Record<SearchResultType, string> = {
   item: "Tasks",
-  context: "Classes, Projects & Programs",
-  note: "Notes",
-  quickNote: "Quick Notes",
-  inbox: "Inbox",
-  record: "Gym Records",
-  obsidian: "Obsidian Vault",
+  context: "Classes",
+  note: "Class notes",
+  quickNote: "Notes",
+  obsidian: "Obsidian vault",
 };
 
-// Obsidian results come from a live Rust-side vault scan (not the static
-// app-data index below), so they're converted into the shared SearchResult
-// shape by the caller rather than built into buildSearchIndex/searchIndex.
 export function obsidianNoteToSearchResult(note: ObsidianNote): SearchResult {
   return {
     key: `obsidian:${note.path}`,
@@ -36,31 +34,9 @@ export function obsidianNoteToSearchResult(note: ObsidianNote): SearchResult {
     title: note.title,
     subtitle: note.snippet,
     path: "",
-    category: null,
     haystack: "",
     vaultPath: note.path,
   };
-}
-
-function contextPath(context: Context): string {
-  switch (context.type) {
-    case "Class":
-      return `/school/${context.id}`;
-    case "Project":
-      return "/work";
-    case "Program":
-      return "/gym";
-  }
-}
-
-function itemPath(item: Item): string {
-  if (item.category === "School") {
-    return item.subcategory_id ? `/school/${item.subcategory_id}` : "/school";
-  }
-  if (item.category === "Work") return "/work";
-  if (item.category === "Gym") return "/gym";
-  if (item.category === "Personal") return "/personal";
-  return "/master-list";
 }
 
 function normalize(...parts: (string | null | undefined)[]): string {
@@ -72,8 +48,6 @@ export interface GlobalSearchSources {
   contexts: Context[];
   notes: Note[];
   quickNotes: QuickNote[];
-  inboxItems: InboxItem[];
-  records: PersonalRecord[];
 }
 
 export function buildSearchIndex(sources: GlobalSearchSources): SearchResult[] {
@@ -82,39 +56,41 @@ export function buildSearchIndex(sources: GlobalSearchSources): SearchResult[] {
 
   for (const item of sources.items) {
     if (item.deleted_at) continue;
+    const info = itemContextInfo(item, contextsById);
     results.push({
       key: `item:${item.id}`,
       type: "item",
       title: item.title,
-      subtitle: [item.category, item.due_date].filter(Boolean).join(" · ") || null,
-      path: itemPath(item),
-      category: item.category,
-      haystack: normalize(item.title, item.description, item.notes, item.category, item.tags?.join(" ")),
+      subtitle: [info.label, item.due_date].filter(Boolean).join(" · ") || null,
+      path: "/tasks",
+      itemId: item.id,
+      color: info.color,
+      haystack: normalize(item.title, item.description, item.notes, info.label, item.tags?.join(" ")),
     });
   }
 
   for (const context of sources.contexts) {
+    if (context.type !== "Class") continue;
     results.push({
       key: `context:${context.id}`,
       type: "context",
       title: context.name,
-      subtitle: [context.type, context.term ?? context.owner].filter(Boolean).join(" · ") || null,
-      path: contextPath(context),
-      category: null,
-      haystack: normalize(context.name, context.type, context.term, context.owner, context.schedule),
+      subtitle: [context.term, context.owner].filter(Boolean).join(" · ") || null,
+      path: `/school/${context.id}`,
+      haystack: normalize(context.name, context.term, context.owner, context.schedule),
     });
   }
 
   for (const note of sources.notes) {
-    const owner = contextsById.get(note.context_id) ?? null;
+    const owner = contextsById.get(note.context_id);
+    if (!owner || owner.type !== "Class") continue;
     results.push({
       key: `note:${note.id}`,
       type: "note",
       title: note.body.slice(0, 80),
-      subtitle: owner ? `Note on ${owner.name}` : "Note",
-      path: owner ? contextPath(owner) : "/master-list",
-      category: null,
-      haystack: normalize(note.body, owner?.name),
+      subtitle: owner.name,
+      path: `/school/${owner.id}?tab=notes`,
+      haystack: normalize(note.body, owner.name),
     });
   }
 
@@ -123,41 +99,16 @@ export function buildSearchIndex(sources: GlobalSearchSources): SearchResult[] {
       key: `quickNote:${qn.id}`,
       type: "quickNote",
       title: qn.body.slice(0, 80),
-      subtitle: "Quick note",
-      path: "/inbox",
-      category: null,
+      subtitle: "Today · Notes",
+      path: "/",
       haystack: normalize(qn.body),
-    });
-  }
-
-  for (const inboxItem of sources.inboxItems) {
-    results.push({
-      key: `inbox:${inboxItem.id}`,
-      type: "inbox",
-      title: inboxItem.title,
-      subtitle: "Inbox",
-      path: "/inbox",
-      category: null,
-      haystack: normalize(inboxItem.title, inboxItem.notes),
-    });
-  }
-
-  for (const record of sources.records) {
-    results.push({
-      key: `record:${record.id}`,
-      type: "record",
-      title: `${record.exercise_name} — ${record.value}${record.unit ?? ""}`,
-      subtitle: "Personal record",
-      path: "/gym",
-      category: null,
-      haystack: normalize(record.exercise_name, record.unit),
     });
   }
 
   return results;
 }
 
-const MAX_RESULTS = 40;
+const MAX_RESULTS = 30;
 
 export function searchIndex(index: SearchResult[], rawQuery: string): SearchResult[] {
   const query = rawQuery.trim().toLowerCase();

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePreferences, useSetPreference } from "@/hooks/usePreferences";
-import { daysUntil } from "@/lib/masterListViews";
+import { daysUntil } from "@/lib/dates";
 import {
   evaluateNotifications,
   notificationItemKind,
