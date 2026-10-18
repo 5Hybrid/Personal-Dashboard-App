@@ -11,6 +11,7 @@ import { useItems, useUpdateItem } from "@/hooks/useItems";
 import { useCreateNote, useDeleteNote, useNotesForContext } from "@/hooks/useNotes";
 import { classColorHex, tint } from "@/lib/classColors";
 import { daysUntil } from "@/lib/dates";
+import { useGradeScale } from "@/hooks/usePreferences";
 import { calculateGrade } from "@/lib/gradeCalculation";
 import { compareByDue, formatDue, isDone, nextStatus } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
@@ -63,7 +64,7 @@ function AssignmentTable({ items, muted = false }: { items: Item[]; muted?: bool
 }
 
 function Breakdown({ context, items, color }: { context: Context; items: Item[]; color: string }) {
-  const grade = calculateGrade(items, context);
+  const grade = calculateGrade(items, context, useGradeScale());
   const byType = new Map(grade.categoryBreakdown.map((c) => [c.category, c]));
   const scale = Object.entries(context.grade_scale ?? {});
   return (
@@ -313,7 +314,7 @@ export default function ClassPage() {
 }
 
 function Stats({ context, items, open, color }: { context: Context; items: Item[]; open: Item[]; color: string }) {
-  const grade = calculateGrade(items, context);
+  const grade = calculateGrade(items, context, useGradeScale());
   const totalWeight = Object.values(context.grade_scale ?? {}).reduce((a, b) => a + b, 0);
   const gradedWeight = grade.categoryBreakdown.reduce((a, c) => a + c.weight, 0);
   const completed = items.length - open.length;
@@ -328,7 +329,7 @@ function Stats({ context, items, open, color }: { context: Context; items: Item[
         </span>
         <span className="text-[13px] text-fg2">
           {grade.currentGrade != null
-            ? `${grade.letter} · ${totalWeight ? Math.round((gradedWeight / totalWeight) * 100) : 0}% of the course graded`
+            ? `${grade.letter} · ${grade.gpaPoints?.toFixed(1)} GPA · ${totalWeight ? Math.round((gradedWeight / totalWeight) * 100) : 0}% of the course graded`
             : "No graded work yet"}
         </span>
       </div>

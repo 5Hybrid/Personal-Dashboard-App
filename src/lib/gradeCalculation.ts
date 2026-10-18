@@ -1,3 +1,4 @@
+import { bandFor, DEFAULT_GRADE_SCALE, effectiveScale, type GradeBand } from "@/lib/gradeScale";
 import type { Context, Item } from "@/types";
 
 export interface CategoryBreakdown {
@@ -10,18 +11,10 @@ export interface CategoryBreakdown {
 export interface GradeResult {
   currentGrade: number | null;
   letter: string | null;
+  gpaPoints: number | null;
   categoryBreakdown: CategoryBreakdown[];
 }
 
-const DEFAULT_CUTOFFS: Record<string, number> = { A: 90, B: 80, C: 70, D: 60 };
-
-function gradeToLetter(grade: number, cutoffs: Record<string, number>): string {
-  const sorted = Object.entries(cutoffs).sort((a, b) => b[1] - a[1]);
-  for (const [letter, cutoff] of sorted) {
-    if (grade >= cutoff) return letter;
-  }
-  return "F";
-}
 
 /**
  * Spec §7.3:
@@ -31,9 +24,8 @@ function gradeToLetter(grade: number, cutoffs: Record<string, number>): string {
  *    excluding categories with zero graded items from the denominator.
  * 4. Map current_grade to a letter using grade_cutoffs.
  */
-export function calculateGrade(items: Item[], context: Context): GradeResult {
+export function calculateGrade(items: Item[], context: Context, schoolScale: GradeBand[] = DEFAULT_GRADE_SCALE): GradeResult {
   const gradeScale = context.grade_scale ?? {};
-  const gradeCutoffs = context.grade_cutoffs ?? DEFAULT_CUTOFFS;
 
   const byCategory = new Map<string, { earned: number; possible: number; count: number }>();
   for (const item of items) {
@@ -59,9 +51,10 @@ export function calculateGrade(items: Item[], context: Context): GradeResult {
   }
 
   if (weightTotal === 0) {
-    return { currentGrade: null, letter: null, categoryBreakdown };
+    return { currentGrade: null, letter: null, gpaPoints: null, categoryBreakdown };
   }
 
   const currentGrade = weightedSum / weightTotal;
-  return { currentGrade, letter: gradeToLetter(currentGrade, gradeCutoffs), categoryBreakdown };
+  const band = bandFor(currentGrade, effectiveScale(context, schoolScale));
+  return { currentGrade, letter: band?.letter ?? "F", gpaPoints: band?.points ?? 0, categoryBreakdown };
 }

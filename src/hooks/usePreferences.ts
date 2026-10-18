@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { commands } from "@/lib/commands";
+import { GRADE_SCALE_PREF_KEY, parseGradeScale } from "@/lib/gradeScale";
 
 const PREFS_KEY = ["preferences"];
 
@@ -8,6 +10,12 @@ export function usePreferences() {
     queryKey: PREFS_KEY,
     queryFn: async () => Object.fromEntries(await commands.listPreferences()) as Record<string, string>,
   });
+}
+
+/** The school-wide letter scale (falls back to the default until the user edits it). */
+export function useGradeScale() {
+  const { data: prefs } = usePreferences();
+  return useMemo(() => parseGradeScale(prefs?.[GRADE_SCALE_PREF_KEY]), [prefs]);
 }
 
 export function useSetPreference() {

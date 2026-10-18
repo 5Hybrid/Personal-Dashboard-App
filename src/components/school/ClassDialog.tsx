@@ -5,7 +5,11 @@ import { ColorSwatchPicker } from "@/components/ColorSwatchPicker";
 import { PrimaryButton, SecondaryButton } from "@/components/lo/primitives";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { GradeScaleEditor } from "@/components/school/GradeScaleEditor";
+import { Switch } from "@/components/ui/switch";
 import { useCreateContext, useUpdateContext } from "@/hooks/useContexts";
+import { useGradeScale } from "@/hooks/usePreferences";
+import { effectiveScale, type GradeBand } from "@/lib/gradeScale";
 import type { Context } from "@/types";
 
 const DEFAULT_GRADE_SCALE: [string, number][] = [
@@ -43,6 +47,8 @@ export function ClassDialog({
   const [owner, setOwner] = useState("");
   const [color, setColor] = useState<string | null>("blue");
   const [scale, setScale] = useState<[string, number][]>(DEFAULT_GRADE_SCALE);
+  const schoolScale = useGradeScale();
+  const [cutoffs, setCutoffs] = useState<GradeBand[] | null>(null); // null = use the school scale
 
   useEffect(() => {
     if (!open) return;
@@ -52,7 +58,8 @@ export function ClassDialog({
     setOwner(context?.owner ?? "");
     setColor(context?.color ?? "blue");
     setScale(context ? Object.entries(context.grade_scale ?? {}) : DEFAULT_GRADE_SCALE);
-  }, [open, context]);
+    setCutoffs(context?.grade_cutoffs && Object.keys(context.grade_cutoffs).length ? effectiveScale(context, schoolScale) : null);
+  }, [open, context]); // eslint-disable-line react-hooks/exhaustive-deps -- schoolScale only seeds the editor when the dialog opens
 
   const total = scale.reduce((sum, [, w]) => sum + (Number.isFinite(w) ? w : 0), 0);
 
@@ -66,6 +73,7 @@ export function ClassDialog({
       owner: owner.trim() || null,
       color,
       grade_scale: Object.fromEntries(scale.filter(([k]) => k.trim()).map(([k, w]) => [k.trim(), w])),
+      grade_cutoffs: cutoffs && cutoffs.some((b) => b.letter.trim()) ? Object.fromEntries(cutoffs.filter((b) => b.letter.trim()).map((b) => [b.letter.trim(), b.min])) : null,
     };
     if (context) {
       await updateContext.mutateAsync({ ...context, ...fields });
@@ -144,6 +152,21 @@ export function ClassDialog({
               <Plus className="size-3.5" />
               Add type
             </button>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-baseline justify-between">
+              <span className="text-[13px] text-fg3">Letter grades</span>
+              <label className="flex items-center gap-2 text-xs text-fg3">
+                Custom for this class
+                <Switch aria-label="Custom letter grades" checked={cutoffs !== null} onCheckedChange={(c) => setCutoffs(c ? schoolScale : null)} />
+              </label>
+            </div>
+            {cutoffs ? (
+              <GradeScaleEditor value={cutoffs} onChange={setCutoffs} showPoints={false} />
+            ) : (
+              <p className="text-xs text-fg3">Uses the school scale from Settings → School.</p>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-1">

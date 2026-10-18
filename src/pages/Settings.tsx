@@ -9,7 +9,9 @@ import { useAutostartEnabled, useSetAutostart } from "@/hooks/useAutostart";
 import { useContexts, useUpdateContext } from "@/hooks/useContexts";
 import { useCalendarList, useConnectGoogle, useDisconnectGoogle, useGoogleConnected, useSyncNow } from "@/hooks/useGoogle";
 import { useScanObsidianTasks, useTestObsidianVault } from "@/hooks/useObsidianVault";
-import { useBackupNow, usePreferences, useSetPreference, useSyncFromBackup } from "@/hooks/usePreferences";
+import { GradeScaleEditor } from "@/components/school/GradeScaleEditor";
+import { useBackupNow, useGradeScale, usePreferences, useSetPreference, useSyncFromBackup } from "@/hooks/usePreferences";
+import { DEFAULT_GRADE_SCALE, GRADE_SCALE_PREF_KEY, PLUS_MINUS_GRADE_SCALE, type GradeBand } from "@/lib/gradeScale";
 import { useUpcomingNotificationSettings } from "@/hooks/useUpcomingNotifications";
 import { useTheme } from "@/hooks/useTheme";
 import { classColorHex } from "@/lib/classColors";
@@ -21,9 +23,10 @@ import { cn } from "@/lib/utils";
 import type { Context } from "@/types";
 import type { Theme } from "@/store/themeStore";
 
-type Section = "general" | "google" | "notifications" | "obsidian" | "backup";
+type Section = "general" | "school" | "google" | "notifications" | "obsidian" | "backup";
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "general", label: "General" },
+  { id: "school", label: "School" },
   { id: "google", label: "Google" },
   { id: "notifications", label: "Notifications" },
   { id: "obsidian", label: "Obsidian" },
@@ -198,6 +201,38 @@ function General() {
         </SettingRow>
       </Group>
     </>
+  );
+}
+
+function School() {
+  const saved = useGradeScale();
+  const { set } = usePref();
+  const [draft, setDraft] = useState<GradeBand[] | null>(null);
+  const bands = draft ?? saved;
+  const valid = bands.length > 0 && bands.every((b) => b.letter.trim());
+
+  return (
+    <Group
+      title="Grade scale"
+      footer="Your school's letters, the lowest percent for each, and GPA points. Classes use this unless you set a custom scale in the class's Edit dialog."
+    >
+      <div className="flex flex-col gap-3 px-4 py-3">
+        <GradeScaleEditor value={bands} onChange={setDraft} />
+        <div className="flex gap-2">
+          <PrimaryButton
+            disabled={!draft || !valid}
+            onClick={() => {
+              set(GRADE_SCALE_PREF_KEY, JSON.stringify(bands.map((b) => ({ ...b, letter: b.letter.trim() }))));
+              setDraft(null);
+            }}
+          >
+            Save
+          </PrimaryButton>
+          <SecondaryButton onClick={() => setDraft(PLUS_MINUS_GRADE_SCALE)}>Standard +/-</SecondaryButton>
+          <SecondaryButton onClick={() => setDraft(DEFAULT_GRADE_SCALE)}>Reset to default</SecondaryButton>
+        </div>
+      </div>
+    </Group>
   );
 }
 
@@ -485,6 +520,7 @@ export default function Settings() {
         </nav>
         <div className="flex min-w-0 max-w-[720px] flex-[999_1_480px] flex-col gap-7 px-6 pb-14 sm:pt-[104px]">
           {section === "general" && <General />}
+          {section === "school" && <School />}
           {section === "google" && <Google />}
           {section === "notifications" && <Notifications />}
           {section === "obsidian" && <Obsidian />}

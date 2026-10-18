@@ -9,6 +9,7 @@ import { activeClasses, contextsMap, itemContextInfo, PERSONAL_HEX } from "@/lib
 import { parseDateOnly } from "@/lib/calendarGrid";
 import { classColorHex } from "@/lib/classColors";
 import { formatFocusDuration } from "@/lib/focusStatistics";
+import { useGradeScale } from "@/hooks/usePreferences";
 import { calculateGrade } from "@/lib/gradeCalculation";
 import { completedInRange, dailyCompletionTrend, missedDeadlines, onTimeRate, studyStreak } from "@/lib/statistics";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ const RANGE_LABEL: Record<Range, string> = { "7": "7 days", "30": "30 days", "12
 export default function Stats() {
   const itemsQuery = useItems();
   const contextsQuery = useContexts();
+  const schoolScale = useGradeScale();
   const { data: sessionsData } = useFocusSessions();
   const [range, setRange] = useState<Range>("30");
   const days = Number(range);
@@ -139,7 +141,7 @@ export default function Stats() {
                     {classes.map((c) => {
                       const classItems = items.filter((i) => i.subcategory_id === c.id);
                       const done = classItems.filter((i) => i.status === "Completed").length;
-                      const grade = calculateGrade(classItems, c).currentGrade;
+                      const grade = calculateGrade(classItems, c, schoolScale).currentGrade;
                       const color = classColorHex(c.color);
                       return (
                         <Link key={c.id} to={`/school/${c.id}`} className="flex flex-col gap-1.5 hover:opacity-80">

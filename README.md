@@ -6,7 +6,7 @@ A personal dashboard for school and life — a Tauri 2 + React desktop app.
 
 - **Today** — greeting, today's tasks, the next 7 days, the 24-hour Day Ring, focus and quick notes.
 - **Tasks** — everything in one list, grouped by when it's due. Filter by School, Personal or a list. Click a task to edit it in the side peek.
-- **School** — each class is a page in the sidebar: assignments, weighted grades and notes.
+- **School** — each class is a page in the sidebar: assignments, weighted grades and notes. Letter grades and GPA points come from a school-wide scale you set in **Settings → School** (one-click "Standard +/-" preset available); any class can override it from its Edit dialog.
 - **Calendar** — week and month views with Google Calendar events. Drag unscheduled tasks onto the week to block time.
 - **Focus** — start a session from any task; the timer survives restarts.
 - **Stats** — completions, on-time rate, focus time and class progress.
